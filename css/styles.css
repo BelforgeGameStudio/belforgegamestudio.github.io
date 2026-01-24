@@ -14,6 +14,7 @@
     --accent-glow: rgba(232, 93, 4, 0.15);
     --text: #f0f0f0;
     --text-muted: #888;
+    --text-dim: #666;
     --border: #2a2a2e;
     --error: #f72585;
 }
@@ -115,15 +116,6 @@ footer {
     font-size: 13px;
 }
 
-footer a {
-    color: var(--text-muted);
-    text-decoration: none;
-}
-
-footer a:hover {
-    color: var(--text);
-}
-
 /* ==========================================================================
    4. Page Headers
    ========================================================================== */
@@ -195,17 +187,6 @@ section {
     margin: 0 auto;
 }
 
-/* Panel section header (for tool panels) */
-.section-header--panel {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border);
-    text-align: left;
-}
-
 .section-title {
     font-family: 'Space Grotesk', sans-serif;
     font-size: 14px;
@@ -265,13 +246,6 @@ section {
     border-color: #3a3a3e;
 }
 
-/* Small button variant */
-.btn-sm {
-    padding: 10px 16px;
-    font-size: 12px;
-    border-radius: 6px;
-}
-
 /* Tool button variant (monospace, uppercase) */
 .btn-tool {
     background: var(--bg-dark);
@@ -291,17 +265,6 @@ section {
     border-color: var(--accent);
 }
 
-.btn-tool.btn-primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: white;
-}
-
-.btn-tool.btn-primary:hover:not(:disabled) {
-    background: #ff6a0a;
-    box-shadow: 0 0 20px var(--accent-glow);
-}
-
 /* ==========================================================================
    7. Cards (Shared Base)
    ========================================================================== */
@@ -317,10 +280,6 @@ section {
     border-color: #3a3a3e;
     transform: translateY(-4px);
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-}
-
-.card-content {
-    padding: 24px;
 }
 
 .card h3 {
@@ -356,26 +315,6 @@ section {
     stroke-width: 2;
 }
 
-/* Card with image */
-.card-image {
-    width: 100%;
-    height: 200px;
-    background: linear-gradient(135deg, var(--bg-hover) 0%, var(--bg-dark) 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-bottom: 1px solid var(--border);
-    border-radius: 12px 12px 0 0;
-}
-
-.card-image svg {
-    width: 60px;
-    height: 60px;
-    stroke: var(--border);
-    fill: none;
-    stroke-width: 1;
-}
-
 /* Card link */
 .card-link {
     display: inline-flex;
@@ -403,11 +342,6 @@ section {
     gap: 24px;
 }
 
-/* 3-column media card grid */
-.card-grid--3 {
-    grid-template-columns: repeat(3, 1fr);
-}
-
 /* ==========================================================================
    9. Badges & Tags
    ========================================================================== */
@@ -430,12 +364,6 @@ section {
     color: var(--accent);
 }
 
-/* Alias for backwards compatibility */
-.badge.dev {
-    background: var(--accent-glow);
-    color: var(--accent);
-}
-
 .tags {
     display: flex;
     gap: 8px;
@@ -450,72 +378,16 @@ section {
     color: var(--text-muted);
 }
 
-/* Small tag variant */
 .tag-sm {
     padding: 4px 10px;
     font-size: 11px;
 }
 
-/* Backwards compatibility aliases */
-.media-tags, .game-tags, .tool-features { display: flex; gap: 8px; flex-wrap: wrap; }
-.media-tag, .game-tag { padding: 6px 12px; background: var(--bg-dark); border-radius: 6px; font-size: 12px; color: var(--text-muted); }
-.tool-feature { padding: 4px 10px; background: var(--bg-dark); border-radius: 4px; font-size: 11px; color: var(--text-muted); }
-
 /* ==========================================================================
-   10. Form Controls
+   10. Form Controls (Tool-specific)
    ========================================================================== */
 
-.form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.form-label {
-    font-size: 11px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.form-label--sm {
-    font-size: 10px;
-}
-
-.form-row {
-    display: flex;
-    gap: 8px;
-}
-
-.form-col {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
 /* Text/Number inputs */
-.input {
-    background: var(--bg-dark);
-    border: 2px solid var(--border);
-    border-radius: 6px;
-    padding: 10px;
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    width: 100%;
-}
-
-.input:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.input--center {
-    text-align: center;
-}
-
-/* Backwards compatibility */
 .num-input {
     background: var(--bg-dark);
     border: 2px solid var(--border);
@@ -534,48 +406,12 @@ section {
 }
 
 /* Checkbox toggle */
-.checkbox {
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    background: var(--bg-dark);
-    border: 2px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-    position: relative;
-    flex-shrink: 0;
-}
-
-.checkbox:checked {
-    background: var(--accent);
-    border-color: var(--accent);
-}
-
-.checkbox:checked::after {
-    content: '✓';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-size: 11px;
-    font-weight: bold;
-}
-
-.checkbox-row {
+.toggle-row {
     display: flex;
     align-items: center;
     gap: 10px;
 }
 
-.checkbox-label {
-    font-size: 11px;
-    color: var(--text-muted);
-    cursor: pointer;
-}
-
-/* Backwards compatibility */
-.toggle-row { display: flex; align-items: center; gap: 10px; }
 .toggle-checkbox {
     appearance: none;
     width: 18px;
@@ -587,7 +423,12 @@ section {
     position: relative;
     flex-shrink: 0;
 }
-.toggle-checkbox:checked { background: var(--accent); border-color: var(--accent); }
+
+.toggle-checkbox:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
 .toggle-checkbox:checked::after {
     content: '✓';
     position: absolute;
@@ -598,49 +439,19 @@ section {
     font-size: 11px;
     font-weight: bold;
 }
-.toggle-label { font-size: 11px; color: var(--text-muted); cursor: pointer; }
 
-/* Option buttons (tile size, tabs, etc.) */
-.option-group {
+.toggle-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+/* Tile size buttons */
+.tile-size-options {
     display: flex;
     gap: 8px;
 }
 
-.option-btn {
-    flex: 1;
-    background: var(--bg-dark);
-    border: 2px solid var(--border);
-    border-radius: 6px;
-    padding: 10px 6px;
-    color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-align: center;
-}
-
-.option-btn:hover {
-    border-color: var(--accent);
-    color: var(--text);
-}
-
-.option-btn.active {
-    background: var(--accent-glow);
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-/* Small option button */
-.option-btn--sm {
-    padding: 6px 10px;
-    font-size: 10px;
-    border-width: 1px;
-}
-
-/* Backwards compatibility */
-.tile-size-options { display: flex; gap: 8px; }
 .tile-size-btn {
     flex: 1;
     background: var(--bg-dark);
@@ -654,10 +465,25 @@ section {
     cursor: pointer;
     transition: all 0.2s ease;
 }
-.tile-size-btn:hover { border-color: var(--accent); color: var(--text); }
-.tile-size-btn.active { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); }
 
-.sort-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+.tile-size-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.tile-size-btn.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Sort buttons */
+.sort-controls {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
 .sort-btn {
     background: var(--bg-dark);
     border: 1px solid var(--border);
@@ -669,18 +495,15 @@ section {
     cursor: pointer;
     transition: all 0.2s ease;
 }
-.sort-btn:hover { border-color: var(--accent); color: var(--text); }
+
+.sort-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
 
 /* ==========================================================================
-   11. Panels & Containers
+   11. Panels & Stats
    ========================================================================== */
-
-.panel {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-}
 
 .panel-title {
     font-family: 'Space Grotesk', sans-serif;
@@ -720,8 +543,8 @@ section {
     letter-spacing: 1px;
 }
 
-/* Warning/Alert boxes */
-.alert {
+/* Warning boxes */
+.warning-box {
     background: var(--accent-glow);
     border: 2px solid var(--accent);
     border-radius: 8px;
@@ -729,22 +552,22 @@ section {
     display: none;
 }
 
-.alert.show {
+.warning-box.show {
     display: block;
 }
 
-.alert-header {
+.warning-header {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 6px;
 }
 
-.alert-icon {
+.warning-icon {
     font-size: 14px;
 }
 
-.alert-title {
+.warning-title {
     font-size: 10px;
     font-weight: 600;
     color: var(--accent);
@@ -752,25 +575,16 @@ section {
     letter-spacing: 1px;
 }
 
-.alert-text {
+.warning-text {
     font-size: 11px;
     color: var(--text-muted);
     line-height: 1.4;
 }
 
-.alert-value {
+.warning-value {
     color: var(--accent);
     font-weight: 600;
 }
-
-/* Backwards compatibility */
-.warning-box { background: var(--accent-glow); border: 2px solid var(--accent); border-radius: 8px; padding: 12px; display: none; }
-.warning-box.show { display: block; }
-.warning-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.warning-icon { font-size: 14px; }
-.warning-title { font-size: 10px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
-.warning-text { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
-.warning-value { color: var(--accent); font-weight: 600; }
 
 /* ==========================================================================
    12. Empty States
@@ -782,20 +596,6 @@ section {
     padding: 48px;
     color: var(--text-muted);
     font-size: 12px;
-}
-
-.empty-state svg {
-    width: 64px;
-    height: 64px;
-    stroke: var(--border);
-    margin-bottom: 24px;
-}
-
-.empty-state h3 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 24px;
-    color: var(--text);
-    margin-bottom: 8px;
 }
 
 /* ==========================================================================
@@ -913,6 +713,31 @@ section {
 
 .modal-actions .btn {
     flex: 1;
+    background: var(--bg-dark);
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.modal-actions .btn:hover:not(:disabled) {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+}
+
+.modal-actions .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+.modal-actions .btn-primary:hover:not(:disabled) {
+    background: #ff6a0a;
 }
 
 /* ==========================================================================
@@ -977,7 +802,7 @@ section {
 }
 
 /* ==========================================================================
-   16. Homepage - Media Cards (3-column grid with images)
+   16. Homepage - Media Cards
    ========================================================================== */
 
 .media-card-grid {
@@ -1037,7 +862,7 @@ section {
 }
 
 /* ==========================================================================
-   17. Games Page - Full-width Game Cards
+   17. Games Page - Game Cards
    ========================================================================== */
 
 .game-card {
@@ -1085,7 +910,7 @@ section {
 }
 
 /* ==========================================================================
-   18. Tools Page - Tool Cards & Privacy Note
+   18. Tools Page
    ========================================================================== */
 
 .privacy-note {
@@ -1191,7 +1016,7 @@ section {
 }
 
 /* ==========================================================================
-   19. Sprite Sheet Generator - Tool Layout
+   19. Sprite Sheet Generator - Layout
    ========================================================================== */
 
 .tool-container {
@@ -1200,12 +1025,6 @@ section {
     padding: 0 40px 80px;
 }
 
-.tool-layout {
-    display: flex;
-    gap: 32px;
-}
-
-/* Backwards compatibility */
 .tool-grid {
     display: flex;
     gap: 32px;
@@ -1227,12 +1046,36 @@ section {
     gap: 20px;
 }
 
-/* Backwards compatibility for form elements in controls */
-.control-group { display: flex; flex-direction: column; gap: 10px; }
-.control-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
-.input-row { display: flex; gap: 8px; }
-.input-group { flex: 1; display: flex; flex-direction: column; gap: 6px; }
-.input-group-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.control-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.input-row {
+    display: flex;
+    gap: 8px;
+}
+
+.input-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.input-group-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
 
 /* Action buttons section */
 .action-buttons {
@@ -1295,10 +1138,6 @@ section {
     gap: 24px;
 }
 
-.content-area > * {
-    width: 100%;
-}
-
 /* ==========================================================================
    20. Sprite Sheet Generator - Drop Zone
    ========================================================================== */
@@ -1359,6 +1198,7 @@ section {
     padding: 24px;
     min-height: 280px;
     flex: 1;
+    width: 100%;
 }
 
 .sprites-section .section-header {
@@ -1410,13 +1250,8 @@ section {
     border-radius: 2px;
 }
 
-.sprite-item.drag-over-left::before {
-    left: -7px;
-}
-
-.sprite-item.drag-over-right::after {
-    right: -7px;
-}
+.sprite-item.drag-over-left::before { left: -7px; }
+.sprite-item.drag-over-right::after { right: -7px; }
 
 .sprite-item img,
 .sprite-item canvas {
@@ -1470,6 +1305,7 @@ section {
     border-radius: 12px;
     padding: 24px;
     flex: 1;
+    width: 100%;
 }
 
 .preview-section .section-header {
@@ -1497,17 +1333,6 @@ section {
     border-radius: 8px;
     overflow: auto;
     padding: 16px;
-}
-
-/* Checkerboard background utility class */
-.checkerboard-bg {
-    background: 
-        linear-gradient(45deg, #1c1c20 25%, transparent 25%),
-        linear-gradient(-45deg, #1c1c20 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, #1c1c20 75%),
-        linear-gradient(-45deg, transparent 75%, #1c1c20 75%);
-    background-size: 16px 16px;
-    background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
 }
 
 #previewCanvas {
@@ -1607,35 +1432,6 @@ section {
     font-weight: 600;
 }
 
-/* Modal action buttons */
-.modal-actions .btn {
-    background: var(--bg-dark);
-    border: 2px solid var(--border);
-    border-radius: 6px;
-    padding: 12px 16px;
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.modal-actions .btn:hover:not(:disabled) {
-    background: var(--accent-glow);
-    border-color: var(--accent);
-}
-
-.modal-actions .btn-primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: white;
-}
-
-.modal-actions .btn-primary:hover:not(:disabled) {
-    background: #ff6a0a;
-}
-
 /* Import mode tabs */
 .import-mode-tabs {
     display: flex;
@@ -1669,7 +1465,7 @@ section {
     color: var(--accent);
 }
 
-/* Insert position group */
+/* Insert position */
 .insert-position-group {
     display: flex;
     flex-direction: column;
@@ -1719,14 +1515,12 @@ section {
    ========================================================================== */
 
 @media (max-width: 1024px) {
-    .media-card-grid,
-    .card-grid--3 {
+    .media-card-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 }
 
 @media (max-width: 900px) {
-    .tool-layout,
     .tool-grid {
         flex-direction: column;
     }
@@ -1775,7 +1569,6 @@ section {
     }
 
     .media-card-grid,
-    .card-grid--3,
     .card-grid {
         grid-template-columns: 1fr;
     }
