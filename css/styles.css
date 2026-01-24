@@ -847,6 +847,26 @@ section {
     padding: 24px;
 }
 
+/* Links wrapping card content should inherit styles */
+.media-card-content > a:not(.card-link) {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+}
+
+.media-card-content > a:not(.card-link) h3 {
+    transition: color 0.2s ease;
+}
+
+.media-card-content > a:not(.card-link):hover h3 {
+    color: var(--accent);
+}
+
+/* Card link turns orange on hover OR when any sibling link is hovered */
+.media-card-content .card-link {
+    transition: color 0.2s ease, gap 0.2s ease;
+}
+
 .media-card h3 {
     font-family: 'Space Grotesk', sans-serif;
     font-size: 20px;
