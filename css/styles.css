@@ -862,55 +862,7 @@ section {
 }
 
 /* ==========================================================================
-   17. Games Page - Game Cards
-   ========================================================================== */
-
-.game-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    overflow: hidden;
-    margin-bottom: 32px;
-}
-
-.game-card-image {
-    width: 100%;
-    height: 300px;
-    background: linear-gradient(135deg, var(--bg-hover) 0%, var(--bg-dark) 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-bottom: 1px solid var(--border);
-}
-
-.game-card-image svg {
-    width: 80px;
-    height: 80px;
-    stroke: var(--border);
-    fill: none;
-    stroke-width: 1;
-}
-
-.game-card-content {
-    padding: 32px;
-}
-
-.game-card h2 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 28px;
-    font-weight: 600;
-    margin-bottom: 12px;
-}
-
-.game-card p {
-    color: var(--text-muted);
-    font-size: 15px;
-    line-height: 1.7;
-    margin-bottom: 24px;
-}
-
-/* ==========================================================================
-   18. Tools Page
+   17. Tools Page - Privacy Note
    ========================================================================== */
 
 .privacy-note {
@@ -930,89 +882,6 @@ section {
     width: 16px;
     height: 16px;
     stroke: var(--accent);
-}
-
-.tools-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-    gap: 24px;
-}
-
-.tool-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 28px;
-    transition: all 0.3s ease;
-    display: flex;
-    flex-direction: column;
-}
-
-.tool-card:hover {
-    border-color: #3a3a3e;
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-}
-
-.tool-icon {
-    width: 48px;
-    height: 48px;
-    background: var(--accent-glow);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 20px;
-}
-
-.tool-icon svg {
-    width: 24px;
-    height: 24px;
-    stroke: var(--accent);
-    fill: none;
-    stroke-width: 2;
-}
-
-.tool-card h3 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 20px;
-    font-weight: 600;
-    margin-bottom: 10px;
-}
-
-.tool-card p {
-    color: var(--text-muted);
-    font-size: 14px;
-    line-height: 1.7;
-    flex-grow: 1;
-}
-
-.tool-link {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 20px;
-    padding: 12px 20px;
-    background: var(--bg-dark);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 14px;
-    font-weight: 500;
-    text-decoration: none;
-    transition: all 0.2s ease;
-}
-
-.tool-link:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.tool-link svg {
-    width: 16px;
-    height: 16px;
 }
 
 /* ==========================================================================
@@ -1570,10 +1439,6 @@ section {
 
     .media-card-grid,
     .card-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .tools-grid {
         grid-template-columns: 1fr;
     }
 
