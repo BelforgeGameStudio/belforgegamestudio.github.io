@@ -141,21 +141,15 @@ footer {
 
 /* Tool header variant */
 .tool-header {
-    padding: 100px 40px 40px;
+    padding: 90px 40px 24px;
     text-align: center;
 }
 
-.tool-header h1 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 36px;
-    font-weight: 700;
-    margin-bottom: 12px;
-    color: var(--accent);
-}
-
 .tool-header p {
-    color: var(--text-muted);
-    font-size: 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--accent);
 }
 
 /* ==========================================================================
@@ -1420,11 +1414,11 @@ section {
     }
 
     .tool-header {
-        padding: 80px 20px 30px;
+        padding: 75px 20px 20px;
     }
 
-    .tool-header h1 {
-        font-size: 28px;
+    .tool-header p {
+        font-size: 18px;
     }
 
     .tool-container {

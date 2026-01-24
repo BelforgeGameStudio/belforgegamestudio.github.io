@@ -40,7 +40,6 @@ const autofitToggle = $('autofitToggle');
 const extrudeToggle = $('extrudeToggle');
 const snapPotBtn = $('snapPot');
 const sheetNameInput = $('sheetName');
-const sheetSizeSuffix = $('sheetSizeSuffix');
 const spriteCountEl = $('spriteCount');
 const rowCountEl = $('rowCount');
 const sheetWidthEl = $('sheetWidth');
@@ -79,12 +78,27 @@ const skipEmptyHint = $('skipEmptyHint');
 // Tile Size Controls
 // ============================================================================
 
+// Size suffix pattern to match _16x16, _32x32, _64x64, _128x128
+const SIZE_SUFFIX_REGEX = /_(?:16|32|64|128)x(?:16|32|64|128)$/;
+
+function updateSheetNameSize(newSize) {
+    let name = sheetNameInput.value;
+    if (SIZE_SUFFIX_REGEX.test(name)) {
+        // Replace existing size suffix
+        name = name.replace(SIZE_SUFFIX_REGEX, `_${newSize}x${newSize}`);
+    } else {
+        // Append size suffix
+        name = `${name}_${newSize}x${newSize}`;
+    }
+    sheetNameInput.value = name;
+}
+
 document.querySelectorAll('.tile-size-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.tile-size-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         tileSize = parseInt(btn.dataset.size);
-        sheetSizeSuffix.textContent = `_${tileSize}x${tileSize}`;
+        updateSheetNameSize(tileSize);
         updateAll();
     });
 });
@@ -204,7 +218,7 @@ async function handleFiles(files) {
         sprites.push(...regularSprites);
         
         // Auto-populate sheet name from first file (only if still default)
-        if (sheetNameInput.value === 'spritesheet' || sheetNameInput.value === '') {
+        if (sheetNameInput.value === 'spritesheet_32x32' || sheetNameInput.value === '') {
             const firstName = regularSprites[0].name;
             // Try to extract a base name (remove trailing numbers/suffixes)
             const cleanName = firstName
@@ -214,7 +228,7 @@ async function handleFiles(files) {
                 .replace(/[-_]?sprites?$/i, '') // Remove 'sprite(s)' suffix
                 .trim();
             if (cleanName) {
-                sheetNameInput.value = cleanName;
+                sheetNameInput.value = `${cleanName}_${tileSize}x${tileSize}`;
             }
         }
         
@@ -473,7 +487,7 @@ async function performImport() {
     sprites.splice(insertIdx, 0, ...newSprites);
     
     // Auto-populate sheet name from imported file (only if still default)
-    if (sheetNameInput.value === 'spritesheet' || sheetNameInput.value === '') {
+    if (sheetNameInput.value === 'spritesheet_32x32' || sheetNameInput.value === '') {
         // Clean up the base name for use as sheet name
         const cleanName = baseName
             .replace(/_\d+$/, '')           // Remove trailing _000 style suffixes
@@ -481,7 +495,7 @@ async function performImport() {
             .replace(/[-_]?sprites?$/i, '') // Remove 'sprite(s)' suffix
             .trim();
         if (cleanName) {
-            sheetNameInput.value = cleanName;
+            sheetNameInput.value = `${cleanName}_${tileSize}x${tileSize}`;
         }
     }
     
@@ -1003,7 +1017,7 @@ function getExportName() {
         .replace(/[\s\-\.]+/g, '_')        // Collapse spaces, dashes, dots to underscore
         .replace(/_+/g, '_')               // Collapse multiple underscores
         .replace(/^_|_$/g, '');            // Trim leading/trailing underscores
-    return (name || 'spritesheet') + '_' + tileSize + 'x' + tileSize;
+    return name || 'spritesheet';
 }
 
 function downloadPng() {
