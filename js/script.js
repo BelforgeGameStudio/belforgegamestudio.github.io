@@ -40,6 +40,7 @@ const autofitToggle = $('autofitToggle');
 const extrudeToggle = $('extrudeToggle');
 const snapPotBtn = $('snapPot');
 const sheetNameInput = $('sheetName');
+const sheetSizeSuffix = $('sheetSizeSuffix');
 const spriteCountEl = $('spriteCount');
 const rowCountEl = $('rowCount');
 const sheetWidthEl = $('sheetWidth');
@@ -83,6 +84,7 @@ document.querySelectorAll('.tile-size-btn').forEach(btn => {
         document.querySelectorAll('.tile-size-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         tileSize = parseInt(btn.dataset.size);
+        sheetSizeSuffix.textContent = `_${tileSize}x${tileSize}`;
         updateAll();
     });
 });
@@ -200,6 +202,22 @@ async function handleFiles(files) {
     // Add regular sprites immediately
     if (regularSprites.length > 0) {
         sprites.push(...regularSprites);
+        
+        // Auto-populate sheet name from first file (only if still default)
+        if (sheetNameInput.value === 'spritesheet' || sheetNameInput.value === '') {
+            const firstName = regularSprites[0].name;
+            // Try to extract a base name (remove trailing numbers/suffixes)
+            const cleanName = firstName
+                .replace(/_\d+$/, '')           // Remove trailing _000 style suffixes
+                .replace(/[-_]?\d+$/, '')        // Remove trailing numbers
+                .replace(/[-_]?sheet$/i, '')    // Remove 'sheet' suffix
+                .replace(/[-_]?sprites?$/i, '') // Remove 'sprite(s)' suffix
+                .trim();
+            if (cleanName) {
+                sheetNameInput.value = cleanName;
+            }
+        }
+        
         renderSpritesGrid();
         updateAll();
         showToast('Added ' + regularSprites.length + ' sprite(s)');
@@ -453,6 +471,19 @@ async function performImport() {
                      insertPosition === 'start' ? 0 : clampedIdx;
     
     sprites.splice(insertIdx, 0, ...newSprites);
+    
+    // Auto-populate sheet name from imported file (only if still default)
+    if (sheetNameInput.value === 'spritesheet' || sheetNameInput.value === '') {
+        // Clean up the base name for use as sheet name
+        const cleanName = baseName
+            .replace(/_\d+$/, '')           // Remove trailing _000 style suffixes
+            .replace(/[-_]?sheet$/i, '')    // Remove 'sheet' suffix
+            .replace(/[-_]?sprites?$/i, '') // Remove 'sprite(s)' suffix
+            .trim();
+        if (cleanName) {
+            sheetNameInput.value = cleanName;
+        }
+    }
     
     renderSpritesGrid();
     updateAll();
