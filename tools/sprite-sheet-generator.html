@@ -1,0 +1,1709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprite Sheet Generator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0c;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a24;
+            --accent-cyan: #00f5d4;
+            --accent-magenta: #f72585;
+            --accent-yellow: #fee440;
+            --accent-orange: #ff9f1c;
+            --text-primary: #e8e8e8;
+            --text-secondary: #888899;
+            --grid-line: rgba(0, 245, 212, 0.1);
+            --border-glow: rgba(0, 245, 212, 0.3);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+            background-size: 16px 16px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .container { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 32px; }
+        header { text-align: center; margin-bottom: 48px; animation: slideDown 0.6s ease-out; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+        h1 {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 24px;
+            color: var(--accent-cyan);
+            text-shadow: 0 0 10px var(--accent-cyan), 0 0 30px rgba(0, 245, 212, 0.5);
+            margin-bottom: 12px;
+            letter-spacing: 2px;
+        }
+        .subtitle { font-size: 13px; color: var(--text-secondary); letter-spacing: 3px; text-transform: uppercase; }
+        .main-grid { display: grid; grid-template-columns: 320px 1fr; gap: 32px; animation: fadeIn 0.8s ease-out 0.2s both; }
+        .controls-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-glow);
+            border-radius: 4px;
+            padding: 24px;
+            height: fit-content;
+            position: sticky;
+            top: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .panel-title { font-family: 'Press Start 2P', cursive; font-size: 10px; color: var(--accent-yellow); padding-bottom: 12px; border-bottom: 1px dashed var(--border-glow); }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .control-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
+        .tile-size-options { display: flex; gap: 8px; }
+        .tile-size-btn {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border: 2px solid transparent;
+            border-radius: 4px;
+            padding: 10px 6px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .tile-size-btn:hover { border-color: var(--accent-cyan); color: var(--text-primary); }
+        .tile-size-btn.active { background: rgba(0, 245, 212, 0.1); border-color: var(--accent-cyan); color: var(--accent-cyan); box-shadow: 0 0 15px rgba(0, 245, 212, 0.2); }
+        .input-row { display: flex; gap: 8px; }
+        .input-group { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+        .input-group-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; }
+        .num-input {
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-glow);
+            border-radius: 4px;
+            padding: 10px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            text-align: center;
+            width: 100%;
+        }
+        .num-input:focus { outline: none; border-color: var(--accent-cyan); box-shadow: 0 0 10px rgba(0, 245, 212, 0.2); }
+        .toggle-row { display: flex; align-items: center; gap: 10px; }
+        .toggle-checkbox {
+            appearance: none;
+            width: 18px; height: 18px;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-glow);
+            border-radius: 3px;
+            cursor: pointer;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .toggle-checkbox:checked { background: var(--accent-cyan); border-color: var(--accent-cyan); }
+        .toggle-checkbox:checked::after { content: '✓'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--bg-primary); font-size: 11px; font-weight: bold; }
+        .toggle-label { font-size: 11px; color: var(--text-secondary); cursor: pointer; }
+        .sort-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+        .sort-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-glow);
+            border-radius: 3px;
+            padding: 6px 10px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .sort-btn:hover { border-color: var(--accent-cyan); color: var(--text-primary); }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat-box { background: var(--bg-tertiary); border-radius: 4px; padding: 10px; text-align: center; }
+        .stat-value { font-family: 'Press Start 2P', cursive; font-size: 12px; color: var(--accent-cyan); margin-bottom: 4px; }
+        .stat-label { font-size: 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
+        .warning-box { background: rgba(247, 37, 133, 0.1); border: 2px solid var(--accent-magenta); border-radius: 4px; padding: 12px; display: none; }
+        .warning-box.show { display: block; animation: popIn 0.3s ease-out; }
+        .warning-box.warn-orange { background: rgba(255, 159, 28, 0.1); border-color: var(--accent-orange); }
+        .warning-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .warning-icon { font-size: 14px; }
+        .warning-title { font-size: 10px; font-weight: 600; color: var(--accent-magenta); text-transform: uppercase; letter-spacing: 1px; }
+        .warning-box.warn-orange .warning-title { color: var(--accent-orange); }
+        .warning-text { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+        .warning-value { color: var(--accent-magenta); font-weight: 600; }
+        .warning-box.warn-orange .warning-value { color: var(--accent-orange); }
+        .action-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 16px; border-top: 1px dashed var(--border-glow); }
+        .btn {
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-glow);
+            border-radius: 4px;
+            padding: 12px 16px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn:hover:not(:disabled) { background: rgba(0, 245, 212, 0.1); border-color: var(--accent-cyan); transform: translateY(-1px); }
+        .btn-primary { background: var(--accent-cyan); border-color: var(--accent-cyan); color: var(--bg-primary); }
+        .btn-primary:hover:not(:disabled) { background: #00ddc0; box-shadow: 0 0 20px rgba(0, 245, 212, 0.4); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+        .btn-danger { border-color: var(--accent-magenta); color: var(--accent-magenta); }
+        .btn-danger:hover:not(:disabled) { background: rgba(247, 37, 133, 0.1); border-color: var(--accent-magenta); }
+        .btn-row { display: flex; gap: 8px; }
+        .btn-row .btn { flex: 1; padding: 10px 8px; font-size: 10px; }
+        .content-area { display: flex; flex-direction: column; gap: 24px; }
+        .drop-zone {
+            background: var(--bg-secondary);
+            border: 3px dashed var(--border-glow);
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        .drop-zone::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(45deg, transparent 45%, rgba(0, 245, 212, 0.03) 45%, rgba(0, 245, 212, 0.03) 55%, transparent 55%);
+            background-size: 20px 20px;
+            pointer-events: none;
+        }
+        .drop-zone.drag-over {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 245, 212, 0.05);
+            transform: scale(1.01);
+            box-shadow: 0 0 30px rgba(0, 245, 212, 0.2), inset 0 0 30px rgba(0, 245, 212, 0.05);
+        }
+        .drop-icon { width: 56px; height: 56px; margin: 0 auto 16px; opacity: 0.6; }
+        .drop-icon svg { width: 100%; height: 100%; stroke: var(--accent-cyan); }
+        .drop-text { font-size: 14px; color: var(--text-secondary); margin-bottom: 6px; }
+        .drop-hint { font-size: 11px; color: var(--text-secondary); opacity: 0.6; }
+        .sprites-section { background: var(--bg-secondary); border: 1px solid var(--border-glow); border-radius: 8px; padding: 20px; min-height: 180px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px dashed var(--border-glow); }
+        .section-title { font-family: 'Press Start 2P', cursive; font-size: 10px; color: var(--accent-yellow); }
+        .sprites-grid { display: flex; flex-wrap: wrap; gap: 10px; min-height: 80px; position: relative; }
+        .sprite-item {
+            position: relative;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-glow);
+            border-radius: 4px;
+            padding: 6px;
+            cursor: grab;
+            transition: all 0.15s ease;
+            animation: popIn 0.3s ease-out;
+            user-select: none;
+        }
+        .sprite-item:hover { border-color: var(--accent-cyan); transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3); }
+        .sprite-item.dragging { opacity: 0.4; cursor: grabbing; }
+        .sprite-item.drag-over-left::before, .sprite-item.drag-over-right::after {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 3px;
+            background: var(--accent-cyan);
+            border-radius: 2px;
+            box-shadow: 0 0 10px var(--accent-cyan);
+        }
+        .sprite-item.drag-over-left::before { left: -7px; }
+        .sprite-item.drag-over-right::after { right: -7px; }
+        .sprite-item img, .sprite-item canvas { display: block; image-rendering: pixelated; }
+        .sprite-remove {
+            position: absolute;
+            top: -6px; right: -6px;
+            width: 18px; height: 18px;
+            background: var(--accent-magenta);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 11px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sprite-item:hover .sprite-remove { opacity: 1; }
+        .sprite-index { position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); background: var(--bg-primary); padding: 1px 5px; border-radius: 3px; font-size: 8px; color: var(--text-secondary); }
+        .empty-state { width: 100%; text-align: center; padding: 32px; color: var(--text-secondary); font-size: 12px; }
+        .preview-section { background: var(--bg-secondary); border: 1px solid var(--border-glow); border-radius: 8px; padding: 20px; }
+        .preview-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 180px;
+            background: linear-gradient(45deg, var(--bg-tertiary) 25%, transparent 25%),
+                linear-gradient(-45deg, var(--bg-tertiary) 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, var(--bg-tertiary) 75%),
+                linear-gradient(-45deg, transparent 75%, var(--bg-tertiary) 75%);
+            background-size: 16px 16px;
+            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+            border-radius: 4px;
+            overflow: auto;
+            padding: 16px;
+        }
+        #previewCanvas { image-rendering: pixelated; border: 2px solid var(--border-glow); box-shadow: 0 0 20px rgba(0, 0, 0, 0.5); }
+        .preview-empty { color: var(--text-secondary); font-size: 12px; text-align: center; }
+        .dimension-display { display: none; justify-content: center; gap: 20px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-glow); }
+        .dimension-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+        .dimension-value { color: var(--accent-cyan); font-weight: 600; }
+        .toast {
+            position: fixed;
+            bottom: 24px; right: 24px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--accent-cyan);
+            border-radius: 4px;
+            padding: 14px 20px;
+            color: var(--text-primary);
+            font-size: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { border-color: var(--accent-magenta); }
+
+        /* Modal styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal {
+            background: var(--bg-secondary);
+            border: 2px solid var(--accent-cyan);
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+            box-shadow: 0 0 40px rgba(0, 245, 212, 0.2);
+        }
+        .modal-overlay.show .modal {
+            transform: scale(1);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px dashed var(--border-glow);
+        }
+        .modal-title {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 12px;
+            color: var(--accent-cyan);
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .modal-close:hover { color: var(--accent-magenta); }
+        .modal-body { display: flex; flex-direction: column; gap: 20px; }
+        .modal-preview-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .sheet-preview-wrap {
+            flex: 1;
+            min-width: 200px;
+            background: linear-gradient(45deg, var(--bg-tertiary) 25%, transparent 25%),
+                linear-gradient(-45deg, var(--bg-tertiary) 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, var(--bg-tertiary) 75%),
+                linear-gradient(-45deg, transparent 75%, var(--bg-tertiary) 75%);
+            background-size: 16px 16px;
+            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+            border-radius: 4px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .sheet-preview-wrap canvas {
+            image-rendering: pixelated;
+            max-width: 100%;
+            max-height: 300px;
+        }
+        .slice-config {
+            flex: 1;
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .slice-info {
+            background: var(--bg-tertiary);
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .slice-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .slice-info-row:last-child { margin-bottom: 0; }
+        .slice-info-value { color: var(--accent-cyan); font-weight: 600; }
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .modal-actions .btn { flex: 1; }
+
+        .import-mode-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .import-mode-tab {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-glow);
+            border-radius: 4px;
+            padding: 10px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .import-mode-tab:hover { border-color: var(--accent-cyan); color: var(--text-primary); }
+        .import-mode-tab.active {
+            background: rgba(0, 245, 212, 0.1);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .insert-position-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .insert-position-options {
+            display: flex;
+            gap: 8px;
+        }
+        .insert-pos-btn {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-glow);
+            border-radius: 4px;
+            padding: 8px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .insert-pos-btn:hover { border-color: var(--accent-cyan); color: var(--text-primary); }
+        .insert-pos-btn.active {
+            background: rgba(0, 245, 212, 0.1);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+        .insert-index-input {
+            display: none;
+            margin-top: 8px;
+        }
+        .insert-index-input.show { display: block; }
+
+        @media (max-width: 900px) {
+            .main-grid { grid-template-columns: 1fr; }
+            .controls-panel { position: static; }
+            h1 { font-size: 16px; }
+        }
+
+        .site-footer {
+            text-align: center;
+            padding: 24px 16px;
+            margin-top: 48px;
+            border-top: 1px solid var(--border-glow);
+            font-size: 11px;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+        .site-footer p { margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SPRITE SHEET GEN</h1>
+            <p class="subtitle">Drag & Drop • Arrange • Export</p>
+        </header>
+        <div class="main-grid">
+            <aside class="controls-panel">
+                <h2 class="panel-title">Configuration</h2>
+                <div class="control-group">
+                    <label class="control-label">Tile Size</label>
+                    <div class="tile-size-options">
+                        <button class="tile-size-btn" data-size="16">16</button>
+                        <button class="tile-size-btn active" data-size="32">32</button>
+                        <button class="tile-size-btn" data-size="64">64</button>
+                        <button class="tile-size-btn" data-size="128">128</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label class="input-group-label">Max Cols</label>
+                            <input type="number" class="num-input" id="maxCols" value="8" min="1" max="128">
+                        </div>
+                        <div class="input-group">
+                            <label class="input-group-label">Padding</label>
+                            <input type="number" class="num-input" id="padding" value="0" min="0" max="16">
+                        </div>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="input-group">
+                        <label class="input-group-label">Sheet Name</label>
+                        <input type="text" class="num-input" id="sheetName" value="spritesheet" placeholder="spritesheet" style="text-align:left;padding-left:12px;">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="toggle-row">
+                        <input type="checkbox" class="toggle-checkbox" id="autofitToggle" checked>
+                        <label class="toggle-label" for="autofitToggle">Auto-fit sprites to tile</label>
+                    </div>
+                    <div class="toggle-row">
+                        <input type="checkbox" class="toggle-checkbox" id="extrudeToggle">
+                        <label class="toggle-label" for="extrudeToggle">Extrude edges (anti-bleed)</label>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Sort Sprites</label>
+                    <div class="sort-controls">
+                        <button class="sort-btn" data-sort="name-asc">A→Z</button>
+                        <button class="sort-btn" data-sort="name-desc">Z→A</button>
+                        <button class="sort-btn" data-sort="natural">Natural</button>
+                        <button class="sort-btn" data-sort="reverse">Reverse</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Power of Two</label>
+                    <div class="btn-row">
+                        <button class="btn" id="snapPot">Snap to POT</button>
+                    </div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-value" id="spriteCount">0</div>
+                        <div class="stat-label">Sprites</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="rowCount">0</div>
+                        <div class="stat-label">Rows</div>
+                    </div>
+                </div>
+                <div class="warning-box" id="sizeWarning">
+                    <div class="warning-header">
+                        <span class="warning-icon">⚠️</span>
+                        <span class="warning-title">Size Mismatch</span>
+                    </div>
+                    <p class="warning-text"><span class="warning-value" id="mismatchCount">0</span> sprite(s) not <span id="expectedSize">32×32</span></p>
+                </div>
+                <div class="warning-box warn-orange" id="gpuWarning">
+                    <div class="warning-header">
+                        <span class="warning-icon">⚠️</span>
+                        <span class="warning-title">Large Texture</span>
+                    </div>
+                    <p class="warning-text">Sheet exceeds <span class="warning-value" id="gpuLimit">8192</span>px</p>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" id="generateBtn" disabled>Generate Sheet</button>
+                    <div class="btn-row">
+                        <button class="btn" id="downloadPng" disabled>PNG</button>
+                        <button class="btn" id="downloadJson" disabled>JSON</button>
+                    </div>
+                    <button class="btn btn-danger" id="clearBtn">Clear All</button>
+                </div>
+            </aside>
+            <main class="content-area">
+                <div class="drop-zone" id="dropZone">
+                    <div class="drop-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
+                            <path d="M12 16V4m0 0L8 8m4-4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <p class="drop-text">Drop PNG sprites or sprite sheets here</p>
+                    <p class="drop-hint">or click to browse • sheets will auto-detect</p>
+                    <input type="file" id="fileInput" accept="image/png" multiple hidden>
+                </div>
+                <section class="sprites-section">
+                    <div class="section-header">
+                        <h3 class="section-title">Loaded Sprites</h3>
+                        <span class="drop-hint">Drag to reorder</span>
+                    </div>
+                    <div class="sprites-grid" id="spritesGrid">
+                        <div class="empty-state">No sprites loaded</div>
+                    </div>
+                </section>
+                <section class="preview-section">
+                    <div class="section-header">
+                        <h3 class="section-title">Preview</h3>
+                    </div>
+                    <div class="preview-container" id="previewContainer">
+                        <canvas id="previewCanvas" style="display: none;"></canvas>
+                        <p class="preview-empty" id="previewEmpty">Generate to preview</p>
+                    </div>
+                    <div class="dimension-display" id="dimensionDisplay">
+                        <div class="dimension-item">
+                            <span>W:</span>
+                            <span class="dimension-value" id="sheetWidth">0</span>
+                            <span>px</span>
+                        </div>
+                        <div class="dimension-item">
+                            <span>H:</span>
+                            <span class="dimension-value" id="sheetHeight">0</span>
+                            <span>px</span>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <footer class="site-footer">
+        <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+        <p>This is a free to use tool • All processing runs locally in your browser • No files are uploaded or stored</p>
+    </footer>
+
+    <!-- Import Sprite Sheet Modal -->
+    <div class="modal-overlay" id="importModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Import Sprite Sheet</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="import-mode-tabs">
+                    <button class="import-mode-tab active" data-mode="slice">Slice into Sprites</button>
+                    <button class="import-mode-tab" data-mode="single">Add as Single Image</button>
+                </div>
+                
+                <div id="sliceMode">
+                    <div class="modal-preview-container">
+                        <div class="sheet-preview-wrap">
+                            <canvas id="sheetPreviewCanvas"></canvas>
+                        </div>
+                        <div class="slice-config">
+                            <button class="btn" id="autoDetectBtn" style="margin-bottom: 8px;">✨ Auto-detect Grid</button>
+                            <div id="detectResult" class="slice-info" style="display: none; margin-bottom: 8px;">
+                                <div class="slice-info-row">
+                                    <span>Detected:</span>
+                                    <span class="slice-info-value" id="detectResultText">--</span>
+                                </div>
+                                <div class="slice-info-row">
+                                    <span>Confidence:</span>
+                                    <span class="slice-info-value" id="detectConfidence">--</span>
+                                </div>
+                            </div>
+                            <div class="slice-info">
+                                <div class="slice-info-row">
+                                    <span>Image Size:</span>
+                                    <span class="slice-info-value" id="importImgSize">0×0</span>
+                                </div>
+                                <div class="slice-info-row">
+                                    <span>Slice Size:</span>
+                                    <span class="slice-info-value" id="importSliceSize">32×32</span>
+                                </div>
+                                <div class="slice-info-row">
+                                    <span>Grid:</span>
+                                    <span class="slice-info-value" id="importGridSize">0×0</span>
+                                </div>
+                                <div class="slice-info-row">
+                                    <span>Tiles to Scan:</span>
+                                    <span class="slice-info-value" id="importSpriteCount">0</span>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <div class="input-row">
+                                    <div class="input-group">
+                                        <label class="input-group-label">Slice Width</label>
+                                        <input type="number" class="num-input" id="sliceWidth" value="32" min="1" max="1024">
+                                    </div>
+                                    <div class="input-group">
+                                        <label class="input-group-label">Slice Height</label>
+                                        <input type="number" class="num-input" id="sliceHeight" value="32" min="1" max="1024">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <div class="input-row">
+                                    <div class="input-group">
+                                        <label class="input-group-label">Spacing X</label>
+                                        <input type="number" class="num-input" id="sliceSpacingX" value="0" min="0" max="64">
+                                    </div>
+                                    <div class="input-group">
+                                        <label class="input-group-label">Spacing Y</label>
+                                        <input type="number" class="num-input" id="sliceSpacingY" value="0" min="0" max="64">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <div class="input-row">
+                                    <div class="input-group">
+                                        <label class="input-group-label">Offset X</label>
+                                        <input type="number" class="num-input" id="sliceOffsetX" value="0" min="0" max="256">
+                                    </div>
+                                    <div class="input-group">
+                                        <label class="input-group-label">Offset Y</label>
+                                        <input type="number" class="num-input" id="sliceOffsetY" value="0" min="0" max="256">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="toggle-row">
+                                <input type="checkbox" class="toggle-checkbox" id="skipEmpty" checked>
+                                <label class="toggle-label" for="skipEmpty">Skip empty/transparent tiles</label>
+                            </div>
+                            <p id="skipEmptyHint" style="font-size: 9px; color: var(--text-secondary); opacity: 0.6; margin-top: -4px;">Empty tiles will be excluded from import</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="singleMode" style="display: none;">
+                    <div class="sheet-preview-wrap" style="max-width: 300px; margin: 0 auto;">
+                        <canvas id="singlePreviewCanvas"></canvas>
+                    </div>
+                    <div class="slice-info" style="margin-top: 16px;">
+                        <div class="slice-info-row">
+                            <span>Image Size:</span>
+                            <span class="slice-info-value" id="singleImgSize">0×0</span>
+                        </div>
+                        <p style="margin-top: 8px; font-size: 10px; opacity: 0.7;">Image will be added as a single sprite. Use auto-fit option to scale if needed.</p>
+                    </div>
+                </div>
+
+                <div class="insert-position-group">
+                    <label class="control-label">Insert Position</label>
+                    <div class="insert-position-options">
+                        <button class="insert-pos-btn active" data-pos="end">End</button>
+                        <button class="insert-pos-btn" data-pos="start">Start</button>
+                        <button class="insert-pos-btn" data-pos="index">At Index</button>
+                    </div>
+                    <div class="insert-index-input" id="insertIndexWrap">
+                        <input type="number" class="num-input" id="insertIndex" value="0" min="0" style="width: 100px;">
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn" id="cancelImport">Cancel</button>
+                    <button class="btn btn-primary" id="confirmImport">Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sprites = [];
+        let tileSize = 32;
+        let maxCols = 8;
+        let padding = 0;
+        let autoFit = true;
+        let extrudeEdges = false;
+        let generatedCanvas = null;
+        let generatedMetadata = null;
+        let draggedIndex = null;
+
+        // Import modal state
+        let pendingImportImage = null;
+        let pendingImportName = '';
+        let importMode = 'slice';
+        let insertPosition = 'end';
+
+        const $ = id => document.getElementById(id);
+        const dropZone = $('dropZone');
+        const fileInput = $('fileInput');
+        const spritesGrid = $('spritesGrid');
+        const previewCanvas = $('previewCanvas');
+        const previewEmpty = $('previewEmpty');
+        const dimensionDisplay = $('dimensionDisplay');
+        const generateBtn = $('generateBtn');
+        const downloadPngBtn = $('downloadPng');
+        const downloadJsonBtn = $('downloadJson');
+        const clearBtn = $('clearBtn');
+        const maxColsInput = $('maxCols');
+        const paddingInput = $('padding');
+        const autofitToggle = $('autofitToggle');
+        const extrudeToggle = $('extrudeToggle');
+        const snapPotBtn = $('snapPot');
+        const sheetNameInput = $('sheetName');
+        const spriteCountEl = $('spriteCount');
+        const rowCountEl = $('rowCount');
+        const sheetWidthEl = $('sheetWidth');
+        const sheetHeightEl = $('sheetHeight');
+        const toast = $('toast');
+        const sizeWarning = $('sizeWarning');
+        const mismatchCountEl = $('mismatchCount');
+        const expectedSizeEl = $('expectedSize');
+        const gpuWarning = $('gpuWarning');
+        const gpuLimitEl = $('gpuLimit');
+
+        // Import modal elements
+        const importModal = $('importModal');
+        const modalClose = $('modalClose');
+        const sheetPreviewCanvas = $('sheetPreviewCanvas');
+        const singlePreviewCanvas = $('singlePreviewCanvas');
+        const sliceWidthInput = $('sliceWidth');
+        const sliceHeightInput = $('sliceHeight');
+        const sliceSpacingXInput = $('sliceSpacingX');
+        const sliceSpacingYInput = $('sliceSpacingY');
+        const sliceOffsetXInput = $('sliceOffsetX');
+        const sliceOffsetYInput = $('sliceOffsetY');
+        const skipEmptyToggle = $('skipEmpty');
+        const cancelImportBtn = $('cancelImport');
+        const confirmImportBtn = $('confirmImport');
+        const insertIndexInput = $('insertIndex');
+        const insertIndexWrap = $('insertIndexWrap');
+
+        const autoDetectBtn = $('autoDetectBtn');
+        const detectResult = $('detectResult');
+        const detectResultText = $('detectResultText');
+        const detectConfidence = $('detectConfidence');
+        const skipEmptyHint = $('skipEmptyHint');
+
+        document.querySelectorAll('.tile-size-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tile-size-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                tileSize = parseInt(btn.dataset.size);
+                updateAll();
+            });
+        });
+
+        maxColsInput.addEventListener('change', () => {
+            maxCols = Math.max(1, Math.min(128, parseInt(maxColsInput.value) || 8));
+            maxColsInput.value = maxCols;
+            updateAll();
+        });
+
+        paddingInput.addEventListener('change', () => {
+            padding = Math.max(0, Math.min(16, parseInt(paddingInput.value) || 0));
+            paddingInput.value = padding;
+            updateAll();
+        });
+
+        autofitToggle.addEventListener('change', () => {
+            autoFit = autofitToggle.checked;
+            if (sprites.length > 0) generateSheet();
+        });
+
+        extrudeToggle.addEventListener('change', () => {
+            extrudeEdges = extrudeToggle.checked;
+            if (sprites.length > 0) generateSheet();
+        });
+
+        document.querySelectorAll('.sort-btn').forEach(btn => {
+            btn.addEventListener('click', () => sortSprites(btn.dataset.sort));
+        });
+
+        function sortSprites(type) {
+            if (sprites.length < 2) return;
+            switch (type) {
+                case 'name-asc': sprites.sort((a, b) => a.name.localeCompare(b.name)); break;
+                case 'name-desc': sprites.sort((a, b) => b.name.localeCompare(a.name)); break;
+                case 'natural': sprites.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })); break;
+                case 'reverse': sprites.reverse(); break;
+            }
+            renderSpritesGrid();
+            if (generatedCanvas) generateSheet();
+            showToast('Sorted: ' + type);
+        }
+
+        snapPotBtn.addEventListener('click', () => {
+            if (sprites.length === 0) { showToast('Add sprites first', true); return; }
+            const cellSize = tileSize + padding * 2;
+            const potWidths = [64, 128, 256, 512, 1024, 2048, 4096, 8192];
+            for (const potW of potWidths) {
+                if (potW < cellSize) continue;
+                const fitCols = Math.floor(potW / cellSize);
+                if (fitCols >= 1) {
+                    maxCols = Math.min(fitCols, sprites.length);
+                    maxColsInput.value = maxCols;
+                    updateAll();
+                    showToast('Snapped to ' + calculateLayout().width + 'px');
+                    return;
+                }
+            }
+        });
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+        fileInput.addEventListener('change', e => { handleFiles(e.target.files); fileInput.value = ''; });
+
+        async function handleFiles(files) {
+            // Block if modal is already open
+            if (importModal.classList.contains('show')) {
+                showToast('Close import dialog first', true);
+                return;
+            }
+            
+            const pngFiles = Array.from(files).filter(f => f.type === 'image/png');
+            if (pngFiles.length === 0) { showToast('PNG files only', true); return; }
+            
+            const regularSprites = [];
+            const potentialSheets = [];
+            
+            for (const file of pngFiles) {
+                try {
+                    const { img, objectURL } = await loadImage(file);
+                    const name = file.name.replace(/\.png$/i, '');
+                    
+                    // Smarter sheet detection:
+                    // - Must be at least 2x tile size in one dimension, OR
+                    // - Dimensions are exact multiples of tile size (likely a grid)
+                    const isLikelySheet = (img.width >= tileSize * 2 || img.height >= tileSize * 2) ||
+                                          (img.width > tileSize && img.width % tileSize === 0 && img.height % tileSize === 0);
+                    
+                    if (isLikelySheet) {
+                        potentialSheets.push({ img, objectURL, name, width: img.width, height: img.height });
+                    } else {
+                        regularSprites.push({ name, image: img, objectURL, width: img.width, height: img.height });
+                    }
+                } catch (err) { console.error('Failed:', file.name, err); }
+            }
+            
+            // Add regular sprites immediately
+            if (regularSprites.length > 0) {
+                sprites.push(...regularSprites);
+                renderSpritesGrid();
+                updateAll();
+                showToast('Added ' + regularSprites.length + ' sprite(s)');
+            }
+            
+            // Handle potential sheets one at a time
+            if (potentialSheets.length > 0) {
+                processPendingSheets(potentialSheets);
+            }
+        }
+
+        async function processPendingSheets(sheets) {
+            for (const sheet of sheets) {
+                await showImportModal(sheet);
+            }
+        }
+
+        function showImportModal(imageData) {
+            return new Promise((resolve) => {
+                pendingImportImage = imageData;
+                pendingImportName = imageData.name;
+                
+                // Set slice dimensions to current tile size
+                sliceWidthInput.value = tileSize;
+                sliceHeightInput.value = tileSize;
+                sliceSpacingXInput.value = 0;
+                sliceSpacingYInput.value = 0;
+                sliceOffsetXInput.value = 0;
+                sliceOffsetYInput.value = 0;
+                
+                // Update insert index max
+                insertIndexInput.max = sprites.length;
+                insertIndexInput.value = Math.min(insertIndexInput.value, sprites.length);
+                
+                // Reset to slice mode
+                importMode = 'slice';
+                document.querySelectorAll('.import-mode-tab').forEach(t => t.classList.remove('active'));
+                document.querySelector('.import-mode-tab[data-mode="slice"]').classList.add('active');
+                $('sliceMode').style.display = 'block';
+                $('singleMode').style.display = 'none';
+                detectResult.style.display = 'none';
+                
+                updateImportPreview();
+                importModal.classList.add('show');
+                
+                // Store resolve for later
+                importModal._resolve = resolve;
+            });
+        }
+
+        function updateImportPreview() {
+            if (!pendingImportImage) return;
+            
+            const img = pendingImportImage.img;
+            const sliceW = Math.max(1, parseInt(sliceWidthInput.value) || tileSize);
+            const sliceH = Math.max(1, parseInt(sliceHeightInput.value) || tileSize);
+            const spacingX = Math.max(0, parseInt(sliceSpacingXInput.value) || 0);
+            const spacingY = Math.max(0, parseInt(sliceSpacingYInput.value) || 0);
+            const offsetX = Math.max(0, parseInt(sliceOffsetXInput.value) || 0);
+            const offsetY = Math.max(0, parseInt(sliceOffsetYInput.value) || 0);
+            
+            // Update info displays
+            $('importImgSize').textContent = `${img.width}×${img.height}`;
+            $('singleImgSize').textContent = `${img.width}×${img.height}`;
+            $('importSliceSize').textContent = `${sliceW}×${sliceH}`;
+            
+            const { cols, rows } = calculateSliceGrid(img.width, img.height, sliceW, sliceH, spacingX, spacingY, offsetX, offsetY);
+            $('importGridSize').textContent = `${cols}×${rows}`;
+            $('importSpriteCount').textContent = cols * rows;
+            
+            // Draw preview with grid overlay
+            const canvas = sheetPreviewCanvas;
+            const maxSize = 280;
+            const scale = Math.min(maxSize / img.width, maxSize / img.height, 2);
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            // Draw grid overlay
+            ctx.strokeStyle = 'rgba(0, 245, 212, 0.6)';
+            ctx.lineWidth = 1;
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = (offsetX + col * (sliceW + spacingX)) * scale;
+                    const y = (offsetY + row * (sliceH + spacingY)) * scale;
+                    ctx.strokeRect(x, y, sliceW * scale, sliceH * scale);
+                }
+            }
+            
+            // Single preview
+            const singleCanvas = singlePreviewCanvas;
+            const singleScale = Math.min(maxSize / img.width, maxSize / img.height, 2);
+            singleCanvas.width = img.width * singleScale;
+            singleCanvas.height = img.height * singleScale;
+            const singleCtx = singleCanvas.getContext('2d');
+            singleCtx.imageSmoothingEnabled = false;
+            singleCtx.clearRect(0, 0, singleCanvas.width, singleCanvas.height);
+            singleCtx.drawImage(img, 0, 0, singleCanvas.width, singleCanvas.height);
+        }
+
+        function closeImportModal(imported = false) {
+            importModal.classList.remove('show');
+            if (!imported && pendingImportImage) {
+                URL.revokeObjectURL(pendingImportImage.objectURL);
+            }
+            if (importModal._resolve) {
+                importModal._resolve();
+                importModal._resolve = null;
+            }
+            pendingImportImage = null;
+        }
+
+        async function performImport() {
+            if (!pendingImportImage) return;
+            
+            const img = pendingImportImage.img;
+            const baseName = pendingImportName;
+            
+            let newSprites = [];
+            
+            if (importMode === 'slice') {
+                const sliceW = parseInt(sliceWidthInput.value) || tileSize;
+                const sliceH = parseInt(sliceHeightInput.value) || tileSize;
+                const spacingX = parseInt(sliceSpacingXInput.value) || 0;
+                const spacingY = parseInt(sliceSpacingYInput.value) || 0;
+                const offsetX = parseInt(sliceOffsetXInput.value) || 0;
+                const offsetY = parseInt(sliceOffsetYInput.value) || 0;
+                const skipEmpty = skipEmptyToggle.checked;
+                
+                const { cols, rows } = calculateSliceGrid(img.width, img.height, sliceW, sliceH, spacingX, spacingY, offsetX, offsetY);
+                
+                if (cols <= 0 || rows <= 0) {
+                    showToast('Invalid slice settings', true);
+                    return;
+                }
+                
+                // Disable button during processing
+                confirmImportBtn.disabled = true;
+                confirmImportBtn.textContent = 'Processing...';
+                
+                // ORDERING NOTE: spriteIndex uses loadPromises.length which works because:
+                // 1. We push promises in strict row-major loop order
+                // 2. We never mutate loadPromises array after pushing
+                // 3. We sort by _sortIndex after Promise.all() resolves
+                // If refactoring to parallel/chunked processing, preserve _sortIndex assignment order.
+                const loadPromises = [];
+                
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        const x = offsetX + col * (sliceW + spacingX);
+                        const y = offsetY + row * (sliceH + spacingY);
+                        
+                        // Extract sprite to canvas
+                        const spriteCanvas = document.createElement('canvas');
+                        spriteCanvas.width = sliceW;
+                        spriteCanvas.height = sliceH;
+                        const ctx = spriteCanvas.getContext('2d');
+                        ctx.drawImage(img, x, y, sliceW, sliceH, 0, 0, sliceW, sliceH);
+                        
+                        // Check if empty (sample corners + center for speed, full scan only if needed)
+                        if (skipEmpty && isTileEmpty(ctx, sliceW, sliceH)) {
+                            continue;
+                        }
+                        
+                        // Convert canvas to blob, then to image (more memory efficient than dataURL)
+                        // Use loadPromises.length for contiguous naming (not index, which includes skipped)
+                        const spriteIndex = loadPromises.length;
+                        const spriteName = `${baseName}_${String(spriteIndex).padStart(3, '0')}`;
+                        
+                        const loadPromise = new Promise((resolve) => {
+                            spriteCanvas.toBlob((blob) => {
+                                if (!blob) { resolve(null); return; }
+                                const objectURL = URL.createObjectURL(blob);
+                                const spriteImg = new Image();
+                                spriteImg.onload = () => {
+                                    resolve({
+                                        name: spriteName,
+                                        image: spriteImg,
+                                        objectURL,
+                                        width: sliceW,
+                                        height: sliceH,
+                                        _sortIndex: spriteIndex
+                                    });
+                                };
+                                spriteImg.onerror = () => {
+                                    URL.revokeObjectURL(objectURL);
+                                    resolve(null);
+                                };
+                                spriteImg.src = objectURL;
+                            }, 'image/png');
+                        });
+                        
+                        loadPromises.push(loadPromise);
+                    }
+                }
+                
+                // Wait for all images to load
+                const results = await Promise.all(loadPromises);
+                newSprites = results.filter(s => s !== null).sort((a, b) => a._sortIndex - b._sortIndex);
+                newSprites.forEach(s => delete s._sortIndex);
+                
+                // Clean up original image blob
+                URL.revokeObjectURL(pendingImportImage.objectURL);
+                
+                confirmImportBtn.disabled = false;
+                confirmImportBtn.textContent = 'Import';
+                
+            } else {
+                // Add as single image
+                newSprites.push({
+                    name: baseName,
+                    image: img,
+                    objectURL: pendingImportImage.objectURL,
+                    width: img.width,
+                    height: img.height
+                });
+            }
+            
+            if (newSprites.length === 0) {
+                showToast('No sprites to import', true);
+                closeImportModal(false);
+                return;
+            }
+            
+            // Insert at specified position (clamp and sync input value)
+            const rawIdx = parseInt(insertIndexInput.value) || 0;
+            const clampedIdx = Math.min(Math.max(0, rawIdx), sprites.length);
+            insertIndexInput.value = clampedIdx;
+            const insertIdx = insertPosition === 'end' ? sprites.length :
+                             insertPosition === 'start' ? 0 : clampedIdx;
+            
+            sprites.splice(insertIdx, 0, ...newSprites);
+            
+            renderSpritesGrid();
+            updateAll();
+            showToast(`Imported ${newSprites.length} sprite(s)`);
+            closeImportModal(true);
+        }
+        
+        function calculateSliceGrid(imgW, imgH, sliceW, sliceH, spacingX, spacingY, offsetX, offsetY) {
+            const availW = imgW - offsetX;
+            const availH = imgH - offsetY;
+            if (availW < sliceW || availH < sliceH) return { cols: 0, rows: 0 };
+            const cols = Math.max(0, Math.floor((availW + spacingX) / (sliceW + spacingX)));
+            const rows = Math.max(0, Math.floor((availH + spacingY) / (sliceH + spacingY)));
+            return { cols, rows };
+        }
+        
+        function isTileEmpty(ctx, w, h) {
+            // Sample edges + center cross pattern for hollow shape detection
+            const samples = [
+                // Corners
+                [0, 0], [w-1, 0], [0, h-1], [w-1, h-1],
+                // Center
+                [Math.floor(w/2), Math.floor(h/2)],
+                // Edge midpoints (catches frames/outlines)
+                [Math.floor(w/2), 0], [Math.floor(w/2), h-1],
+                [0, Math.floor(h/2)], [w-1, Math.floor(h/2)]
+            ];
+            for (const [x, y] of samples) {
+                const pixel = ctx.getImageData(x, y, 1, 1).data;
+                if (pixel[3] > 0) return false;
+            }
+            // If all samples transparent, do sparse scan (every 4th pixel)
+            const imageData = ctx.getImageData(0, 0, w, h).data;
+            for (let i = 3; i < imageData.length; i += 16) { // every 4th pixel's alpha
+                if (imageData[i] > 0) return false;
+            }
+            return true;
+        }
+
+        // Import modal event listeners
+        modalClose.addEventListener('click', () => closeImportModal());
+        cancelImportBtn.addEventListener('click', () => closeImportModal());
+        confirmImportBtn.addEventListener('click', performImport);
+        
+        importModal.addEventListener('click', (e) => {
+            if (e.target === importModal) closeImportModal();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && importModal.classList.contains('show')) {
+                closeImportModal();
+            }
+        });
+
+        document.querySelectorAll('.import-mode-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.import-mode-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                importMode = tab.dataset.mode;
+                $('sliceMode').style.display = importMode === 'slice' ? 'block' : 'none';
+                $('singleMode').style.display = importMode === 'single' ? 'block' : 'none';
+            });
+        });
+
+        document.querySelectorAll('.insert-pos-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.insert-pos-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                insertPosition = btn.dataset.pos;
+                insertIndexWrap.classList.toggle('show', insertPosition === 'index');
+                // Reset index to end of list when switching away from "At Index"
+                if (insertPosition !== 'index') {
+                    insertIndexInput.value = sprites.length;
+                }
+            });
+        });
+
+        [sliceWidthInput, sliceHeightInput, sliceSpacingXInput, sliceSpacingYInput, sliceOffsetXInput, sliceOffsetYInput].forEach(input => {
+            input.addEventListener('input', updateImportPreview);
+        });
+
+        skipEmptyToggle.addEventListener('change', () => {
+            skipEmptyHint.style.display = skipEmptyToggle.checked ? 'block' : 'none';
+        });
+
+        autoDetectBtn.addEventListener('click', () => {
+            if (!pendingImportImage) return;
+            
+            autoDetectBtn.disabled = true;
+            autoDetectBtn.textContent = 'Detecting...';
+            detectResult.style.display = 'none';
+            
+            // Use setTimeout to let UI update before heavy computation
+            setTimeout(() => {
+                const result = autoDetectGrid(pendingImportImage.img);
+                const confidencePct = Math.round(result.confidence * 100);
+                
+                // Show result panel
+                detectResult.style.display = 'block';
+                detectResultText.textContent = `${result.sliceW}×${result.sliceH}`;
+                if (result.spacingX > 0 || result.spacingY > 0) {
+                    detectResultText.textContent += ` +${result.spacingX}/${result.spacingY}px`;
+                }
+                detectConfidence.textContent = `${confidencePct}%`;
+                
+                // Color code confidence
+                if (result.confidence >= 0.7) {
+                    detectConfidence.style.color = '#00f5d4'; // cyan - high confidence
+                    detectResult.style.borderColor = 'rgba(0, 245, 212, 0.5)';
+                } else if (result.confidence >= 0.3) {
+                    detectConfidence.style.color = '#fee440'; // yellow - medium
+                    detectResult.style.borderColor = 'rgba(254, 228, 64, 0.5)';
+                } else {
+                    detectConfidence.style.color = '#f72585'; // magenta - low
+                    detectResult.style.borderColor = 'rgba(247, 37, 133, 0.5)';
+                }
+                
+                if (result.confidence > 0.3) {
+                    sliceWidthInput.value = result.sliceW;
+                    sliceHeightInput.value = result.sliceH;
+                    sliceSpacingXInput.value = result.spacingX;
+                    sliceSpacingYInput.value = result.spacingY;
+                    sliceOffsetXInput.value = result.offsetX;
+                    sliceOffsetYInput.value = result.offsetY;
+                    updateImportPreview();
+                    showToast(`Detected ${result.sliceW}×${result.sliceH} grid`);
+                } else {
+                    showToast('Detection uncertain - adjust manually', true);
+                }
+                
+                autoDetectBtn.disabled = false;
+                autoDetectBtn.textContent = '✨ Auto-detect Grid';
+            }, 10);
+        });
+
+        function autoDetectGrid(img) {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, img.width, img.height);
+            const data = imageData.data;
+            const w = img.width;
+            const h = img.height;
+            
+            // Calculate transparency ratio for each row and column
+            // Using 0.995 threshold - "mostly transparent" to handle anti-aliasing
+            const TRANSPARENT_THRESHOLD = 0.995;
+            const ALPHA_THRESHOLD = 10; // Consider alpha < 10 as transparent
+            
+            const rowTransparency = [];
+            for (let y = 0; y < h; y++) {
+                let transparentPixels = 0;
+                for (let x = 0; x < w; x++) {
+                    const alpha = data[(y * w + x) * 4 + 3];
+                    if (alpha < ALPHA_THRESHOLD) transparentPixels++;
+                }
+                rowTransparency.push(transparentPixels / w);
+            }
+            
+            const colTransparency = [];
+            for (let x = 0; x < w; x++) {
+                let transparentPixels = 0;
+                for (let y = 0; y < h; y++) {
+                    const alpha = data[(y * w + x) * 4 + 3];
+                    if (alpha < ALPHA_THRESHOLD) transparentPixels++;
+                }
+                colTransparency.push(transparentPixels / h);
+            }
+            
+            // Find "gap" lines (mostly transparent)
+            const rowGaps = rowTransparency.map((t, i) => ({ index: i, isGap: t >= TRANSPARENT_THRESHOLD }));
+            const colGaps = colTransparency.map((t, i) => ({ index: i, isGap: t >= TRANSPARENT_THRESHOLD }));
+            
+            // Detect pattern from gaps
+            const rowPattern = detectGridPattern(rowGaps, h);
+            const colPattern = detectGridPattern(colGaps, w);
+            
+            return {
+                sliceW: colPattern.cellSize > 0 ? colPattern.cellSize : tileSize,
+                sliceH: rowPattern.cellSize > 0 ? rowPattern.cellSize : tileSize,
+                spacingX: colPattern.spacing,
+                spacingY: rowPattern.spacing,
+                offsetX: colPattern.offset,
+                offsetY: rowPattern.offset,
+                confidence: (rowPattern.confidence + colPattern.confidence) / 2
+            };
+        }
+
+        function detectGridPattern(gaps, totalSize) {
+            if (gaps.length === 0) {
+                return { cellSize: totalSize, spacing: 0, offset: 0, confidence: 0 };
+            }
+            
+            // Find runs of gaps and content
+            const runs = [];
+            let currentType = gaps[0].isGap ? 'gap' : 'content';
+            let runStart = 0;
+            
+            for (let i = 1; i < gaps.length; i++) {
+                const type = gaps[i].isGap ? 'gap' : 'content';
+                
+                if (type !== currentType) {
+                    runs.push({ type: currentType, start: runStart, length: i - runStart });
+                    currentType = type;
+                    runStart = i;
+                }
+            }
+            // Close the final run
+            runs.push({ type: currentType, start: runStart, length: gaps.length - runStart });
+            
+            // Filter to get content runs (these are our tiles)
+            const contentRuns = runs.filter(r => r.type === 'content');
+            const gapRuns = runs.filter(r => r.type === 'gap');
+            
+            if (contentRuns.length === 0) {
+                return { cellSize: totalSize, spacing: 0, offset: 0, confidence: 0 };
+            }
+            
+            // Single content run = not a grid, very low confidence
+            if (contentRuns.length === 1) {
+                return { 
+                    cellSize: contentRuns[0].length, 
+                    spacing: 0, 
+                    offset: contentRuns[0].start, 
+                    confidence: 0.1 
+                };
+            }
+            
+            // Find most common content run length (this is our cell size)
+            const contentLengths = contentRuns.map(r => r.length);
+            const cellSize = findMostCommon(contentLengths) || contentLengths[0];
+            
+            // Find most common gap length (this is our spacing)
+            // Exclude first and last gaps (margins)
+            const innerGapRuns = gapRuns.filter(r => {
+                // Only include gaps that are between content runs (not edge margins)
+                const gapEnd = r.start + r.length;
+                const hasContentBefore = contentRuns.some(c => c.start + c.length <= r.start);
+                const hasContentAfter = contentRuns.some(c => c.start >= gapEnd);
+                return hasContentBefore && hasContentAfter;
+            });
+            const gapLengths = innerGapRuns.map(r => r.length);
+            const spacing = gapLengths.length > 0 ? (findMostCommon(gapLengths) || 0) : 0;
+            
+            // Offset is the start of first content
+            const offset = contentRuns[0].start;
+            
+            // Calculate confidence based on consistency
+            const cellSizeConsistency = contentLengths.filter(l => Math.abs(l - cellSize) <= 1).length / contentLengths.length;
+            const spacingConsistency = gapLengths.length > 0 
+                ? gapLengths.filter(l => Math.abs(l - spacing) <= 1).length / gapLengths.length 
+                : 1;
+            
+            // Higher confidence if we found multiple consistent tiles
+            // Scale: 2 tiles = 0.25, 4+ tiles = 1.0
+            const countBonus = Math.min((contentRuns.length - 1) / 3, 1);
+            const confidence = (cellSizeConsistency * 0.4 + spacingConsistency * 0.3 + countBonus * 0.3);
+            
+            return { cellSize, spacing, offset, confidence };
+        }
+
+        function findMostCommon(arr) {
+            if (arr.length === 0) return null;
+            const counts = {};
+            let maxCount = 0;
+            let mostCommon = arr[0];
+            
+            for (const val of arr) {
+                // Group similar values (within ±1) to handle anti-aliasing variance
+                const key = Math.round(val);
+                counts[key] = (counts[key] || 0) + 1;
+                if (counts[key] > maxCount) {
+                    maxCount = counts[key];
+                    mostCommon = key;
+                }
+            }
+            return mostCommon;
+        }
+
+        function loadImage(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                const objectURL = URL.createObjectURL(file);
+                img.onload = () => resolve({ img, objectURL });
+                img.onerror = () => { URL.revokeObjectURL(objectURL); reject(new Error('Load failed')); };
+                img.src = objectURL;
+            });
+        }
+
+        function revokeSprite(sprite) { if (sprite.objectURL) URL.revokeObjectURL(sprite.objectURL); }
+
+        function renderSpritesGrid() {
+            if (sprites.length === 0) { spritesGrid.innerHTML = '<div class="empty-state">No sprites loaded</div>'; generateBtn.disabled = true; return; }
+            generateBtn.disabled = false;
+            spritesGrid.innerHTML = '';
+            sprites.forEach((sprite, index) => {
+                const item = document.createElement('div');
+                item.className = 'sprite-item';
+                item.draggable = true;
+                item.dataset.index = index;
+
+                const canvas = document.createElement('canvas');
+                const displaySize = Math.max(40, Math.min(56, tileSize * 1.5));
+                canvas.width = canvas.height = displaySize;
+                canvas.style.width = canvas.style.height = displaySize + 'px';
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = false;
+                const scale = Math.min(displaySize / sprite.width, displaySize / sprite.height);
+                const w = sprite.width * scale, h = sprite.height * scale;
+                ctx.drawImage(sprite.image, (displaySize - w) / 2, (displaySize - h) / 2, w, h);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'sprite-remove';
+                removeBtn.innerHTML = '×';
+                removeBtn.onclick = e => { e.stopPropagation(); removeSprite(index); };
+
+                const indexLabel = document.createElement('span');
+                indexLabel.className = 'sprite-index';
+                indexLabel.textContent = index;
+
+                item.appendChild(canvas);
+                item.appendChild(removeBtn);
+                item.appendChild(indexLabel);
+
+                item.addEventListener('dragstart', e => { draggedIndex = index; item.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+                item.addEventListener('dragend', () => { draggedIndex = null; item.classList.remove('dragging'); clearDropIndicators(); });
+                item.addEventListener('dragover', e => {
+                    e.preventDefault();
+                    if (draggedIndex === null || draggedIndex === index) return;
+                    const rect = item.getBoundingClientRect();
+                    clearDropIndicators();
+                    item.classList.add(e.clientX < rect.left + rect.width / 2 ? 'drag-over-left' : 'drag-over-right');
+                });
+                item.addEventListener('dragleave', () => item.classList.remove('drag-over-left', 'drag-over-right'));
+                item.addEventListener('drop', e => {
+                    e.preventDefault();
+                    if (draggedIndex === null || draggedIndex === index) return;
+                    const rect = item.getBoundingClientRect();
+                    let targetIndex = index + (e.clientX < rect.left + rect.width / 2 ? 0 : 1);
+                    if (draggedIndex < targetIndex) targetIndex--;
+                    reorderSprites(draggedIndex, targetIndex);
+                    clearDropIndicators();
+                });
+                spritesGrid.appendChild(item);
+            });
+        }
+
+        function clearDropIndicators() { document.querySelectorAll('.sprite-item').forEach(el => el.classList.remove('drag-over-left', 'drag-over-right')); }
+
+        function removeSprite(index) {
+            revokeSprite(sprites.splice(index, 1)[0]);
+            renderSpritesGrid();
+            updateAll();
+            if (sprites.length === 0) {
+                previewCanvas.style.display = 'none';
+                previewEmpty.style.display = 'block';
+                dimensionDisplay.style.display = 'none';
+                downloadPngBtn.disabled = downloadJsonBtn.disabled = true;
+                generatedCanvas = generatedMetadata = null;
+            } else if (generatedCanvas) generateSheet();
+        }
+
+        function reorderSprites(from, to) {
+            if (from === to) return;
+            sprites.splice(to, 0, sprites.splice(from, 1)[0]);
+            renderSpritesGrid();
+            if (generatedCanvas) generateSheet();
+        }
+
+        function updateStats() {
+            const layout = calculateLayout();
+            spriteCountEl.textContent = sprites.length;
+            rowCountEl.textContent = layout.rows;
+        }
+
+        function checkSizeMismatches() {
+            const mismatched = sprites.filter(s => s.width !== tileSize || s.height !== tileSize);
+            if (mismatched.length > 0) {
+                mismatchCountEl.textContent = mismatched.length;
+                expectedSizeEl.textContent = tileSize + '×' + tileSize;
+                sizeWarning.classList.add('show');
+            } else sizeWarning.classList.remove('show');
+        }
+
+        function checkGpuLimits() {
+            if (sprites.length === 0) { gpuWarning.classList.remove('show'); return; }
+            const layout = calculateLayout();
+            const maxDim = Math.max(layout.width, layout.height);
+            if (maxDim > 8192) { gpuLimitEl.textContent = maxDim > 16384 ? '16384' : '8192'; gpuWarning.classList.add('show'); }
+            else gpuWarning.classList.remove('show');
+        }
+
+        function updateAll() { updateStats(); checkSizeMismatches(); checkGpuLimits(); if (sprites.length > 0 && generatedCanvas) generateSheet(); }
+
+        function calculateLayout() {
+            // NOTE: cols is for calculating sheet dimensions, but sprite positioning
+            // uses maxCols for wrapping. This is intentional - sprites wrap at maxCols
+            // regardless of how many columns the final row has. If adding "auto columns"
+            // or "tight pack" modes later, centralize the wrap value here.
+            const count = sprites.length || 0;
+            const cellSize = tileSize + padding * 2;
+            const cols = count > 0 ? Math.min(count, maxCols) : 0;
+            const rows = count > 0 ? Math.ceil(count / maxCols) : 0;
+            return { cols, rows, width: cols * cellSize, height: rows * cellSize, cellSize, wrapAt: maxCols };
+        }
+
+        function generateSheet() {
+            if (sprites.length === 0) return;
+            const { cols, rows, width, height, cellSize, wrapAt } = calculateLayout();
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+
+            const metadata = { tileSize, padding, columns: cols, rows, width, height, sprites: [], nameToIndex: {} };
+
+            sprites.forEach((sprite, index) => {
+                const col = index % wrapAt, row = Math.floor(index / wrapAt);
+                const cellX = col * cellSize, cellY = row * cellSize;
+                const x = cellX + padding, y = cellY + padding;
+                let drawX = x, drawY = y, drawW = tileSize, drawH = tileSize;
+
+                if (autoFit) {
+                    const scale = Math.min(tileSize / sprite.width, tileSize / sprite.height, 1);
+                    drawW = sprite.width * scale;
+                    drawH = sprite.height * scale;
+                    drawX = x + (tileSize - drawW) / 2;
+                    drawY = y + (tileSize - drawH) / 2;
+                    ctx.drawImage(sprite.image, drawX, drawY, drawW, drawH);
+                } else {
+                    const srcX = Math.max(0, (sprite.width - tileSize) / 2);
+                    const srcY = Math.max(0, (sprite.height - tileSize) / 2);
+                    const srcW = Math.min(sprite.width, tileSize);
+                    const srcH = Math.min(sprite.height, tileSize);
+                    drawW = srcW; drawH = srcH;
+                    drawX = x + (tileSize - drawW) / 2;
+                    drawY = y + (tileSize - drawH) / 2;
+                    ctx.drawImage(sprite.image, srcX, srcY, srcW, srcH, drawX, drawY, drawW, drawH);
+                }
+
+                if (extrudeEdges && padding > 0) {
+                    ctx.drawImage(canvas, drawX, drawY, drawW, 1, drawX, drawY - 1, drawW, 1);
+                    ctx.drawImage(canvas, drawX, drawY + drawH - 1, drawW, 1, drawX, drawY + drawH, drawW, 1);
+                    ctx.drawImage(canvas, drawX, drawY, 1, drawH, drawX - 1, drawY, 1, drawH);
+                    ctx.drawImage(canvas, drawX + drawW - 1, drawY, 1, drawH, drawX + drawW, drawY, 1, drawH);
+                }
+
+                metadata.sprites.push({
+                    index,
+                    name: sprite.name,
+                    x, y,
+                    width: tileSize,
+                    height: tileSize,
+                    originalWidth: sprite.width,
+                    originalHeight: sprite.height,
+                    // Unity-compatible fields
+                    rect: { x, y: height - y - tileSize, width: tileSize, height: tileSize }, // Unity Y is bottom-up
+                    pivot: { x: 0.5, y: 0.5 }
+                });
+                metadata.nameToIndex[sprite.name] = index;
+            });
+
+            previewCanvas.width = width;
+            previewCanvas.height = height;
+            const previewCtx = previewCanvas.getContext('2d');
+            previewCtx.imageSmoothingEnabled = false;
+            previewCtx.drawImage(canvas, 0, 0);
+            const maxPreviewSize = 480;
+            const previewScale = Math.min(maxPreviewSize / width, maxPreviewSize / height, 4);
+            previewCanvas.style.width = (width * previewScale) + 'px';
+            previewCanvas.style.height = (height * previewScale) + 'px';
+            previewCanvas.style.display = 'block';
+            previewEmpty.style.display = 'none';
+            dimensionDisplay.style.display = 'flex';
+            sheetWidthEl.textContent = width;
+            sheetHeightEl.textContent = height;
+            generatedCanvas = canvas;
+            generatedMetadata = metadata;
+            downloadPngBtn.disabled = downloadJsonBtn.disabled = false;
+            checkGpuLimits();
+            showToast('Generated ' + width + '×' + height);
+        }
+
+        function getExportName() {
+            let name = sheetNameInput.value.trim() || 'spritesheet';
+            // Sanitize: remove unsafe chars, collapse whitespace/special to underscores
+            name = name
+                .replace(/[<>:"/\\|?*]/g, '')      // Remove Windows-unsafe chars
+                .replace(/[\s\-\.]+/g, '_')        // Collapse spaces, dashes, dots to underscore
+                .replace(/_+/g, '_')               // Collapse multiple underscores
+                .replace(/^_|_$/g, '');            // Trim leading/trailing underscores
+            return (name || 'spritesheet') + '_' + tileSize + 'x' + tileSize;
+        }
+
+        function downloadPng() {
+            if (!generatedCanvas) return;
+            downloadPngBtn.disabled = true;
+            downloadPngBtn.textContent = '...';
+            generatedCanvas.toBlob(blob => {
+                if (!blob) { showToast('Export failed', true); resetDownloadButtons(); return; }
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.download = getExportName() + '.png';
+                link.href = url;
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                showToast('PNG downloaded');
+                resetDownloadButtons();
+            }, 'image/png');
+        }
+
+        function downloadJson() {
+            if (!generatedMetadata) return;
+            const blob = new Blob([JSON.stringify(generatedMetadata, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = getExportName() + '.json';
+            link.href = url;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            showToast('JSON downloaded');
+        }
+
+        function resetDownloadButtons() { downloadPngBtn.disabled = !generatedCanvas; downloadPngBtn.textContent = 'PNG'; }
+
+        function clearAll() {
+            sprites.forEach(revokeSprite);
+            sprites = [];
+            generatedCanvas = generatedMetadata = null;
+            renderSpritesGrid();
+            updateStats();
+            sizeWarning.classList.remove('show');
+            gpuWarning.classList.remove('show');
+            previewCanvas.style.display = 'none';
+            previewEmpty.style.display = 'block';
+            dimensionDisplay.style.display = 'none';
+            downloadPngBtn.disabled = downloadJsonBtn.disabled = true;
+            showToast('Cleared');
+        }
+
+        function showToast(message, isError = false) {
+            toast.textContent = message;
+            toast.className = 'toast' + (isError ? ' error' : '');
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
+        }
+
+        generateBtn.addEventListener('click', generateSheet);
+        downloadPngBtn.addEventListener('click', downloadPng);
+        downloadJsonBtn.addEventListener('click', downloadJson);
+        clearBtn.addEventListener('click', clearAll);
+        updateStats();
+    </script>
+</body>
+</html>
