@@ -1094,6 +1094,22 @@ section {
     text-align: left;
 }
 
+.section-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.btn-sm {
+    padding: 6px 10px;
+    font-size: 12px;
+    min-width: auto;
+}
+
+.btn-sm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .sprites-grid {
     display: flex;
     flex-wrap: wrap;

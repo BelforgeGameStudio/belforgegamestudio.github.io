@@ -14,6 +14,11 @@ let generatedCanvas = null;
 let generatedMetadata = null;
 let draggedIndex = null;
 
+// Undo/Redo state
+let undoStack = [];
+let redoStack = [];
+const MAX_UNDO = 50;
+
 // Import modal state
 let pendingImportImage = null;
 let pendingImportName = '';
@@ -73,22 +78,112 @@ const detectResult = $('detectResult');
 const detectResultText = $('detectResultText');
 const detectConfidence = $('detectConfidence');
 const skipEmptyHint = $('skipEmptyHint');
+const undoBtn = $('undoBtn');
+const redoBtn = $('redoBtn');
+const insertEmptyBtn = $('insertEmptyBtn');
+
+// ============================================================================
+// Undo/Redo System
+// ============================================================================
+
+function saveState() {
+    // Deep clone sprites array (excluding image objects, keep references)
+    const state = sprites.map(s => ({
+        name: s.name,
+        image: s.image,
+        objectURL: s.objectURL,
+        width: s.width,
+        height: s.height
+    }));
+    undoStack.push(state);
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    redoStack = []; // Clear redo on new action
+    updateUndoRedoButtons();
+}
+
+function undo() {
+    if (undoStack.length === 0) return;
+    // Save current state to redo
+    redoStack.push(sprites.map(s => ({ ...s })));
+    // Restore previous state
+    sprites = undoStack.pop();
+    renderSpritesGrid();
+    updateAll();
+    if (generatedCanvas) generateSheet();
+    updateUndoRedoButtons();
+    showToast('Undo');
+}
+
+function redo() {
+    if (redoStack.length === 0) return;
+    // Save current state to undo
+    undoStack.push(sprites.map(s => ({ ...s })));
+    // Restore redo state
+    sprites = redoStack.pop();
+    renderSpritesGrid();
+    updateAll();
+    if (generatedCanvas) generateSheet();
+    updateUndoRedoButtons();
+    showToast('Redo');
+}
+
+function updateUndoRedoButtons() {
+    if (undoBtn) undoBtn.disabled = undoStack.length === 0;
+    if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+}
+
+// ============================================================================
+// Insert Empty Sprite
+// ============================================================================
+
+function insertEmptySprite() {
+    saveState();
+    
+    // Create transparent canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = tileSize;
+    canvas.height = tileSize;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, tileSize, tileSize); // Fully transparent
+    
+    // Convert to blob and create image
+    canvas.toBlob((blob) => {
+        if (!blob) { showToast('Failed to create empty sprite', true); return; }
+        const objectURL = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            const emptySprite = {
+                name: `empty_${String(sprites.length).padStart(3, '0')}`,
+                image: img,
+                objectURL,
+                width: tileSize,
+                height: tileSize
+            };
+            sprites.push(emptySprite);
+            renderSpritesGrid();
+            updateAll();
+            if (generatedCanvas) generateSheet();
+            showToast('Added empty sprite');
+        };
+        img.src = objectURL;
+    }, 'image/png');
+}
 
 // ============================================================================
 // Tile Size Controls
 // ============================================================================
 
-// Size suffix pattern to match _16x16, _32x32, _64x64, _128x128
-const SIZE_SUFFIX_REGEX = /_(?:16|32|64|128)x(?:16|32|64|128)$/;
+// Size suffix pattern to match -16x16, -32x32, -64x64, -128x128
+const SIZE_SUFFIX_REGEX = /-(?:16|32|64|128)x(?:16|32|64|128)$/;
 
 function updateSheetNameSize(newSize) {
     let name = sheetNameInput.value;
     if (SIZE_SUFFIX_REGEX.test(name)) {
         // Replace existing size suffix
-        name = name.replace(SIZE_SUFFIX_REGEX, `_${newSize}x${newSize}`);
+        name = name.replace(SIZE_SUFFIX_REGEX, `-${newSize}x${newSize}`);
     } else {
         // Append size suffix
-        name = `${name}_${newSize}x${newSize}`;
+        name = `${name}-${newSize}x${newSize}`;
     }
     sheetNameInput.value = name;
 }
@@ -139,6 +234,7 @@ document.querySelectorAll('.sort-btn').forEach(btn => {
 
 function sortSprites(type) {
     if (sprites.length < 2) return;
+    saveState();
     switch (type) {
         case 'name-asc': sprites.sort((a, b) => a.name.localeCompare(b.name)); break;
         case 'name-desc': sprites.sort((a, b) => b.name.localeCompare(a.name)); break;
@@ -215,21 +311,25 @@ async function handleFiles(files) {
     
     // Add regular sprites immediately
     if (regularSprites.length > 0) {
+        saveState();
         sprites.push(...regularSprites);
         
         // Auto-populate sheet name from first file (only if still default)
-        if (sheetNameInput.value === 'spritesheet_32x32' || sheetNameInput.value === '') {
-            const firstName = regularSprites[0].name;
-            // Try to extract a base name (remove trailing numbers/suffixes)
-            const cleanName = firstName
-                .replace(/_\d+$/, '')           // Remove trailing _000 style suffixes
-                .replace(/[-_]?\d+$/, '')        // Remove trailing numbers
-                .replace(/[-_]?sheet$/i, '')    // Remove 'sheet' suffix
-                .replace(/[-_]?sprites?$/i, '') // Remove 'sprite(s)' suffix
-                .trim();
-            if (cleanName) {
-                sheetNameInput.value = `${cleanName}_${tileSize}x${tileSize}`;
-            }
+        if (
+          sheetNameInput.value === "spritesheet-32x32" ||
+          sheetNameInput.value === ""
+        ) {
+          const firstName = regularSprites[0].name;
+          // Try to extract a base name (remove trailing numbers/suffixes)
+          const cleanName = firstName
+            .replace(/-\d+$/, "") // Remove trailing -000 style suffixes
+            .replace(/[--]?\d+$/, "") // Remove trailing numbers
+            .replace(/[--]?sheet$/i, "") // Remove 'sheet' suffix
+            .replace(/[--]?sprites?$/i, "") // Remove 'sprite(s)' suffix
+            .trim();
+          if (cleanName) {
+            sheetNameInput.value = `${cleanName}-${tileSize}x${tileSize}`;
+          }
         }
         
         renderSpritesGrid();
@@ -484,6 +584,7 @@ async function performImport() {
     const insertIdx = insertPosition === 'end' ? sprites.length :
                      insertPosition === 'start' ? 0 : clampedIdx;
     
+    saveState();
     sprites.splice(insertIdx, 0, ...newSprites);
     
     // Auto-populate sheet name from imported file (only if still default)
@@ -852,6 +953,7 @@ function clearDropIndicators() {
 }
 
 function removeSprite(index) {
+    saveState();
     revokeSprite(sprites.splice(index, 1)[0]);
     renderSpritesGrid();
     updateAll();
@@ -866,6 +968,7 @@ function removeSprite(index) {
 
 function reorderSprites(from, to) {
     if (from === to) return;
+    saveState();
     sprites.splice(to, 0, sprites.splice(from, 1)[0]);
     renderSpritesGrid();
     if (generatedCanvas) generateSheet();
@@ -1059,6 +1162,7 @@ function resetDownloadButtons() {
 // ============================================================================
 
 function clearAll() {
+    if (sprites.length > 0) saveState();
     sprites.forEach(revokeSprite);
     sprites = [];
     generatedCanvas = generatedMetadata = null;
@@ -1092,9 +1196,13 @@ generateBtn.addEventListener('click', generateSheet);
 downloadPngBtn.addEventListener('click', downloadPng);
 downloadJsonBtn.addEventListener('click', downloadJson);
 clearBtn.addEventListener('click', clearAll);
+if (undoBtn) undoBtn.addEventListener('click', undo);
+if (redoBtn) redoBtn.addEventListener('click', redo);
+if (insertEmptyBtn) insertEmptyBtn.addEventListener('click', insertEmptySprite);
 
 // ============================================================================
 // Initialize
 // ============================================================================
 
 updateStats();
+updateUndoRedoButtons();

@@ -144,7 +144,11 @@
                 <section class="sprites-section">
                     <div class="section-header">
                         <h3 class="section-title">Loaded Sprites</h3>
-                        <span class="drop-hint">Drag to reorder</span>
+                        <div class="section-actions">
+                            <button class="btn btn-sm" id="undoBtn" disabled title="Undo">↶</button>
+                            <button class="btn btn-sm" id="redoBtn" disabled title="Redo">↷</button>
+                            <button class="btn btn-sm" id="insertEmptyBtn" title="Insert empty sprite">+ Empty</button>
+                        </div>
                     </div>
                     <div class="sprites-grid" id="spritesGrid">
                         <div class="empty-state">No sprites loaded</div>
