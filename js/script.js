@@ -1086,7 +1086,7 @@ function renderSpritesGrid() {
 
         const indexLabel = document.createElement('span');
         indexLabel.className = 'sprite-index';
-        indexLabel.textContent = index;
+        indexLabel.textContent = index + 1;  // 1-based for artists (sprite 1, 2, 3...)
 
         item.appendChild(canvas);
         item.appendChild(removeBtn);
