@@ -1,6 +1,11 @@
 /**
  * Sprite Sheet Generator
- * Combine individual sprites into optimized sprite sheets
+ * A browser-based tool for combining sprites into optimized sprite sheets.
+ * 
+ * @author    Belforge Game Studio
+ * @website   https://belforge.github.io
+ * @license   MIT
+ * @version   1.1.0
  */
 
 // State
@@ -113,6 +118,7 @@ const animationPreviewTab = $('animationPreviewTab');
 let animationPlaying = false;
 let animationFrame = 0;
 let animationInterval = null;
+let animationCtx = null; // Cached canvas context
 
 // ============================================================================
 // Undo/Redo System
@@ -1353,7 +1359,7 @@ function downloadJson() {
 /**
  * Format metadata for different game engines/frameworks
  * @param {Object} metadata - The generated sprite sheet metadata
- * @param {string} format - Export format: 'generic', 'unity', 'godot', 'phaser'
+ * @param {string} format - Export format: 'unity', 'godot', 'aseprite-hash', 'aseprite-array', 'texturepacker'
  * @returns {Object} { content: string, extension: string, mimeType: string }
  */
 function formatMetadataForExport(metadata, format) {
@@ -1364,8 +1370,14 @@ function formatMetadataForExport(metadata, format) {
             return formatForUnity(metadata, sheetName);
         case 'godot':
             return formatForGodot(metadata, sheetName);
-        case 'phaser':
-            return formatForPhaser(metadata, sheetName);
+        case 'aseprite-hash':
+            return formatForAsepriteHash(metadata, sheetName);
+        case 'aseprite-array':
+        case 'aseprite': // Legacy support
+            return formatForAsepriteArray(metadata, sheetName);
+        case 'texturepacker':
+        case 'phaser': // Legacy support
+            return formatForTexturePacker(metadata, sheetName);
         default:
             return formatForUnity(metadata, sheetName);
     }
@@ -1448,32 +1460,127 @@ function formatForGodot(metadata, sheetName) {
 }
 
 /**
- * Phaser 3 Atlas JSON format (JSON Array format)
- * Compatible with this.load.atlas()
+ * Aseprite JSON Hash format
+ * Frames keyed by name - compatible with Aseprite exports and many game engines
  */
-function formatForPhaser(metadata, sheetName) {
+function formatForAsepriteHash(metadata, sheetName) {
     const { width, height, sprites } = metadata;
     
-    // Phaser JSON Array format
-    const phaserData = {
-        textures: [{
+    // Build frames object (hash format - frames keyed by name)
+    const frames = {};
+    sprites.forEach(s => {
+        frames[s.name] = {
+            frame: { x: s.x, y: s.y, w: s.width, h: s.height },
+            rotated: false,
+            trimmed: false,
+            spriteSourceSize: { x: 0, y: 0, w: s.width, h: s.height },
+            sourceSize: { w: s.width, h: s.height },
+            duration: 100
+        };
+    });
+    
+    const asepriteData = {
+        frames: frames,
+        meta: {
+            app: 'https://belforge.github.io/tools/sprite-sheet-generator',
+            version: '1.0.0',
             image: sheetName + '.png',
             format: 'RGBA8888',
             size: { w: width, h: height },
-            scale: 1,
-            frames: sprites.map(s => ({
-                filename: s.name,
-                frame: { x: s.x, y: s.y, w: s.width, h: s.height },
-                rotated: false,
-                trimmed: false,
-                spriteSourceSize: { x: 0, y: 0, w: s.width, h: s.height },
-                sourceSize: { w: s.width, h: s.height },
-                anchor: { x: 0.5, y: 0.5 }
-            }))
-        }],
+            scale: '1',
+            frameTags: [
+                {
+                    name: 'default',
+                    from: 0,
+                    to: sprites.length - 1,
+                    direction: 'forward'
+                }
+            ],
+            layers: [
+                { name: 'Layer 1', opacity: 255, blendMode: 'normal' }
+            ],
+            slices: []
+        }
+    };
+    
+    return {
+        content: JSON.stringify(asepriteData, null, 2),
+        extension: '.json',
+        mimeType: 'application/json'
+    };
+}
+
+/**
+ * Aseprite JSON Array format
+ * Frames as array - the format most users expect from "Aseprite JSON"
+ */
+function formatForAsepriteArray(metadata, sheetName) {
+    const { width, height, sprites } = metadata;
+    
+    // Build frames array (array format - what most users expect)
+    const frames = sprites.map(s => ({
+        filename: s.name,
+        frame: { x: s.x, y: s.y, w: s.width, h: s.height },
+        rotated: false,
+        trimmed: false,
+        spriteSourceSize: { x: 0, y: 0, w: s.width, h: s.height },
+        sourceSize: { w: s.width, h: s.height },
+        duration: 100
+    }));
+    
+    const asepriteData = {
+        frames: frames,
         meta: {
-            app: 'Belforge Sprite Sheet Generator',
-            version: '1.0',
+            app: 'https://belforge.github.io/tools/sprite-sheet-generator',
+            version: '1.0.0',
+            image: sheetName + '.png',
+            format: 'RGBA8888',
+            size: { w: width, h: height },
+            scale: '1',
+            frameTags: [
+                {
+                    name: 'default',
+                    from: 0,
+                    to: sprites.length - 1,
+                    direction: 'forward'
+                }
+            ],
+            layers: [
+                { name: 'Layer 1', opacity: 255, blendMode: 'normal' }
+            ],
+            slices: []
+        }
+    };
+    
+    return {
+        content: JSON.stringify(asepriteData, null, 2),
+        extension: '.json',
+        mimeType: 'application/json'
+    };
+}
+
+/**
+ * TexturePacker JSON format (JSON Array format)
+ * Industry standard, compatible with Phaser, Pixi.js, Cocos2d, and many other frameworks
+ */
+function formatForTexturePacker(metadata, sheetName) {
+    const { width, height, sprites } = metadata;
+    
+    // TexturePacker JSON Array format
+    const texturePackerData = {
+        frames: sprites.map(s => ({
+            filename: s.name,
+            frame: { x: s.x, y: s.y, w: s.width, h: s.height },
+            rotated: false,
+            trimmed: false,
+            spriteSourceSize: { x: 0, y: 0, w: s.width, h: s.height },
+            sourceSize: { w: s.width, h: s.height },
+            pivot: { x: 0.5, y: 0.5 }
+        })),
+        meta: {
+            app: 'https://belforge.github.io/tools/sprite-sheet-generator',
+            version: '1.0.0',
+            image: sheetName + '.png',
             format: 'RGBA8888',
             size: { w: width, h: height },
             scale: '1'
@@ -1481,8 +1588,8 @@ function formatForPhaser(metadata, sheetName) {
     };
     
     return {
-        content: JSON.stringify(phaserData, null, 2),
-        extension: '.phaser.json',
+        content: JSON.stringify(texturePackerData, null, 2),
+        extension: '.json',
         mimeType: 'application/json'
     };
 }
@@ -1517,6 +1624,9 @@ function switchToTab(tab) {
 }
 
 function updateAnimationPreview() {
+    // Guard: required elements must exist
+    if (!animationCanvas || !animationEmpty || !animTotalFramesEl || !animCurrentFrameEl) return;
+    
     if (sprites.length === 0) {
         stopAnimation();
         animationEmpty.style.display = 'block';
@@ -1536,16 +1646,21 @@ function updateAnimationPreview() {
     }
     
     // Only draw if animation tab is active
-    if (animationPreviewTab.classList.contains('active')) {
+    if (animationPreviewTab && animationPreviewTab.classList.contains('active')) {
         drawAnimationFrame();
     }
 }
 
 function drawAnimationFrame() {
-    if (sprites.length === 0) return;
+    if (sprites.length === 0 || !animationCanvas) return;
     
     const sprite = sprites[animationFrame];
-    const ctx = animationCanvas.getContext('2d');
+    
+    // Cache context on first use
+    if (!animationCtx) {
+        animationCtx = animationCanvas.getContext('2d');
+    }
+    const ctx = animationCtx;
     
     // Scale up for visibility (min 64px, max 256px)
     const displaySize = Math.max(64, Math.min(256, tileSize * 4));
@@ -1567,7 +1682,7 @@ function drawAnimationFrame() {
     ctx.drawImage(sprite.image, x, y, w, h);
     
     // Update frame counter (1-based for display)
-    animCurrentFrameEl.textContent = animationFrame + 1;
+    if (animCurrentFrameEl) animCurrentFrameEl.textContent = animationFrame + 1;
 }
 
 function nextFrame() {
@@ -1590,6 +1705,12 @@ function toggleAnimation() {
 
 function startAnimation() {
     if (sprites.length === 0) return;
+    
+    // Safety: clear any existing interval
+    if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+    }
     
     animationPlaying = true;
     animPlayPauseBtn.textContent = '⏸';
@@ -1626,7 +1747,7 @@ function updateAnimationSpeed() {
 if (animPrevFrameBtn) animPrevFrameBtn.addEventListener('click', prevFrame);
 if (animPlayPauseBtn) animPlayPauseBtn.addEventListener('click', toggleAnimation);
 if (animNextFrameBtn) animNextFrameBtn.addEventListener('click', nextFrame);
-if (animFpsInput) animFpsInput.addEventListener('change', updateAnimationSpeed);
+if (animFpsInput) animFpsInput.addEventListener('input', updateAnimationSpeed);
 
 // Tab switching
 if (tabSheet) tabSheet.addEventListener('click', () => switchToTab('sheet'));

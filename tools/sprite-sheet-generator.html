@@ -39,10 +39,10 @@
                 <div class="control-group">
                     <label class="control-label">Tile Size</label>
                     <div class="tile-size-options">
-                        <button class="tile-size-btn" data-size="16">16</button>
-                        <button class="tile-size-btn active" data-size="32">32</button>
-                        <button class="tile-size-btn" data-size="64">64</button>
-                        <button class="tile-size-btn" data-size="128">128</button>
+                        <button class="tile-size-btn" data-size="16" title="16×16 pixels per sprite">16</button>
+                        <button class="tile-size-btn active" data-size="32" title="32×32 pixels per sprite">32</button>
+                        <button class="tile-size-btn" data-size="64" title="64×64 pixels per sprite">64</button>
+                        <button class="tile-size-btn" data-size="128" title="128×128 pixels per sprite">128</button>
                     </div>
                 </div>
 
@@ -80,16 +80,16 @@
                 <div class="control-group">
                     <label class="control-label">Sort Sprites</label>
                     <div class="sort-controls">
-                        <button class="sort-btn" data-sort="name-asc">A→Z</button>
-                        <button class="sort-btn" data-sort="name-desc">Z→A</button>
-                        <button class="sort-btn" data-sort="natural">Natural</button>
-                        <button class="sort-btn" data-sort="reverse">Reverse</button>
+                        <button class="sort-btn" data-sort="name-asc" title="Sort alphabetically A to Z">A→Z</button>
+                        <button class="sort-btn" data-sort="name-desc" title="Sort alphabetically Z to A">Z→A</button>
+                        <button class="sort-btn" data-sort="natural" title="Sort with numbers in order (e.g. sprite_2 before sprite_10)">Natural</button>
+                        <button class="sort-btn" data-sort="reverse" title="Reverse current order">Reverse</button>
                     </div>
                 </div>
 
                 <div class="control-group">
                     <div class="tool-btn-row">
-                        <button class="btn" id="snapPot">Snap to Power-of-Two</button>
+                        <button class="btn" id="snapPot" title="Adjust columns so sheet width is 64, 128, 256, 512... px (required by some game engines)">Snap to Power-of-Two</button>
                     </div>
                 </div>
 
@@ -125,15 +125,18 @@
                     <div class="action-buttons">
                         <button class="btn btn-primary" id="generateBtn" disabled>Generate Sheet</button>
                         <div class="tool-btn-row">
-                            <button class="btn" id="downloadPng" disabled>PNG</button>
-                            <div class="export-format-row">
-                                <button class="btn" id="downloadJson" disabled>JSON</button>
-                                <select class="export-format-select" id="exportFormat" title="Export format">
-                                    <option value="unity">Unity</option>
-                                    <option value="godot">Godot</option>
-                                    <option value="phaser">Phaser</option>
-                                </select>
-                            </div>
+                            <button class="btn" id="downloadPng" title="Download your spritesheet as a PNG file" disabled>Download<br>PNG</button>
+                            <button class="btn" id="downloadJson" title="Download your spritesheet as a JSON file" disabled>Download<br>JSON</button>
+                        </div>
+                        <div class="export-format-row">
+                            <label class="export-format-label">Format:</label>
+                            <select class="export-format-select" id="exportFormat" title="Export format">
+                                <option value="unity">Unity</option>
+                                <option value="godot">Godot</option>
+                                <option value="aseprite-hash">Aseprite (Hash)</option>
+                                <option value="aseprite-array">Aseprite (Array)</option>
+                                <option value="texturepacker">TexturePacker</option>
+                            </select>
                         </div>
                         <button class="btn" id="clearBtn">Clear All</button>
                     </div>
