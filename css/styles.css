@@ -1346,6 +1346,132 @@ section {
 }
 
 /* ==========================================================================
+   23. Sprite Sheet Generator - Preview Tabs & Animation
+   ========================================================================== */
+
+.preview-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.preview-tab {
+    background: transparent;
+    border: none;
+    padding: 6px 12px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.preview-tab:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+}
+
+.preview-tab.active {
+    color: var(--accent);
+    background: var(--accent-glow);
+}
+
+.preview-tab-content {
+    display: none;
+}
+
+.preview-tab-content.active {
+    display: block;
+}
+
+.animation-preview-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    background:
+        linear-gradient(45deg, #1c1c20 25%, transparent 25%),
+        linear-gradient(-45deg, #1c1c20 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1c1c20 75%),
+        linear-gradient(-45deg, transparent 75%, #1c1c20 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+    border-radius: 8px;
+    padding: 24px;
+    position: relative;
+}
+
+#animationCanvas {
+    image-rendering: pixelated;
+    border: 2px solid var(--border);
+}
+
+.animation-empty {
+    position: absolute;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+.animation-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.animation-controls .btn-sm {
+    min-width: 36px;
+    font-size: 14px;
+}
+
+.animation-frame-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 60px;
+    text-align: center;
+}
+
+.animation-frame-display span:first-child {
+    color: var(--accent);
+}
+
+.animation-speed-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 12px;
+    padding-left: 12px;
+    border-left: 1px solid var(--border);
+}
+
+.animation-speed-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.animation-fps-input {
+    width: 74px;
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.animation-hint {
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    opacity: 0.6;
+    margin-top: 12px;
+}
+
+/* ==========================================================================
    23. Sprite Sheet Generator - Import Modal
    ========================================================================== */
 

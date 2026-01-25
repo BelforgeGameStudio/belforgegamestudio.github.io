@@ -95,6 +95,25 @@ const redoBtn = $('redoBtn');
 const insertEmptyBtn = $('insertEmptyBtn');
 const exportFormatSelect = $('exportFormat');
 
+// Animation preview elements
+const animationCanvas = $('animationCanvas');
+const animationEmpty = $('animationEmpty');
+const animPrevFrameBtn = $('animPrevFrame');
+const animPlayPauseBtn = $('animPlayPause');
+const animNextFrameBtn = $('animNextFrame');
+const animCurrentFrameEl = $('animCurrentFrame');
+const animTotalFramesEl = $('animTotalFrames');
+const animFpsInput = $('animFps');
+const tabSheet = $('tabSheet');
+const tabAnimation = $('tabAnimation');
+const sheetPreviewTab = $('sheetPreviewTab');
+const animationPreviewTab = $('animationPreviewTab');
+
+// Animation state
+let animationPlaying = false;
+let animationFrame = 0;
+let animationInterval = null;
+
 // ============================================================================
 // Undo/Redo System
 // ============================================================================
@@ -1059,7 +1078,8 @@ function findMostCommon(arr) {
 function renderSpritesGrid() {
     if (sprites.length === 0) { 
         spritesGrid.innerHTML = '<div class="empty-state">No sprites loaded</div>'; 
-        generateBtn.disabled = true; 
+        generateBtn.disabled = true;
+        updateAnimationPreview();
         return; 
     }
     generateBtn.disabled = false;
@@ -1114,6 +1134,9 @@ function renderSpritesGrid() {
         });
         spritesGrid.appendChild(item);
     });
+    
+    // Update animation preview when sprites grid changes
+    updateAnimationPreview();
 }
 
 function clearDropIndicators() { 
@@ -1470,6 +1493,170 @@ function resetDownloadButtons() {
 }
 
 // ============================================================================
+// Animation Preview
+// ============================================================================
+
+function switchToTab(tab) {
+    // Update tab buttons
+    tabSheet.classList.toggle('active', tab === 'sheet');
+    tabAnimation.classList.toggle('active', tab === 'animation');
+    
+    // Update tab content
+    sheetPreviewTab.classList.toggle('active', tab === 'sheet');
+    animationPreviewTab.classList.toggle('active', tab === 'animation');
+    
+    // Stop animation when switching away
+    if (tab === 'sheet' && animationPlaying) {
+        stopAnimation();
+    }
+    
+    // Draw current frame when switching to animation tab
+    if (tab === 'animation' && sprites.length > 0) {
+        drawAnimationFrame();
+    }
+}
+
+function updateAnimationPreview() {
+    if (sprites.length === 0) {
+        stopAnimation();
+        animationEmpty.style.display = 'block';
+        animationCanvas.style.display = 'none';
+        animTotalFramesEl.textContent = '0';
+        animCurrentFrameEl.textContent = '0';
+        return;
+    }
+    
+    animationEmpty.style.display = 'none';
+    animationCanvas.style.display = 'block';
+    animTotalFramesEl.textContent = sprites.length;
+    
+    // Clamp current frame to valid range
+    if (animationFrame >= sprites.length) {
+        animationFrame = 0;
+    }
+    
+    // Only draw if animation tab is active
+    if (animationPreviewTab.classList.contains('active')) {
+        drawAnimationFrame();
+    }
+}
+
+function drawAnimationFrame() {
+    if (sprites.length === 0) return;
+    
+    const sprite = sprites[animationFrame];
+    const ctx = animationCanvas.getContext('2d');
+    
+    // Scale up for visibility (min 64px, max 256px)
+    const displaySize = Math.max(64, Math.min(256, tileSize * 4));
+    animationCanvas.width = displaySize;
+    animationCanvas.height = displaySize;
+    animationCanvas.style.width = displaySize + 'px';
+    animationCanvas.style.height = displaySize + 'px';
+    
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, displaySize, displaySize);
+    
+    // Draw sprite centered and scaled
+    const scale = Math.min(displaySize / sprite.width, displaySize / sprite.height);
+    const w = sprite.width * scale;
+    const h = sprite.height * scale;
+    const x = (displaySize - w) / 2;
+    const y = (displaySize - h) / 2;
+    
+    ctx.drawImage(sprite.image, x, y, w, h);
+    
+    // Update frame counter (1-based for display)
+    animCurrentFrameEl.textContent = animationFrame + 1;
+}
+
+function nextFrame() {
+    animationFrame = (animationFrame + 1) % sprites.length;
+    drawAnimationFrame();
+}
+
+function prevFrame() {
+    animationFrame = (animationFrame - 1 + sprites.length) % sprites.length;
+    drawAnimationFrame();
+}
+
+function toggleAnimation() {
+    if (animationPlaying) {
+        stopAnimation();
+    } else {
+        startAnimation();
+    }
+}
+
+function startAnimation() {
+    if (sprites.length === 0) return;
+    
+    animationPlaying = true;
+    animPlayPauseBtn.textContent = '⏸';
+    animPlayPauseBtn.title = 'Pause';
+    
+    const fps = Math.max(1, Math.min(60, parseInt(animFpsInput.value) || 12));
+    const frameTime = 1000 / fps;
+    
+    animationInterval = setInterval(() => {
+        nextFrame();
+    }, frameTime);
+}
+
+function stopAnimation() {
+    animationPlaying = false;
+    animPlayPauseBtn.textContent = '▶';
+    animPlayPauseBtn.title = 'Play';
+    
+    if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+    }
+}
+
+function updateAnimationSpeed() {
+    if (animationPlaying) {
+        // Restart with new speed
+        stopAnimation();
+        startAnimation();
+    }
+}
+
+// Animation event listeners
+if (animPrevFrameBtn) animPrevFrameBtn.addEventListener('click', prevFrame);
+if (animPlayPauseBtn) animPlayPauseBtn.addEventListener('click', toggleAnimation);
+if (animNextFrameBtn) animNextFrameBtn.addEventListener('click', nextFrame);
+if (animFpsInput) animFpsInput.addEventListener('change', updateAnimationSpeed);
+
+// Tab switching
+if (tabSheet) tabSheet.addEventListener('click', () => switchToTab('sheet'));
+if (tabAnimation) tabAnimation.addEventListener('click', () => switchToTab('animation'));
+
+// Keyboard shortcuts for animation
+document.addEventListener('keydown', (e) => {
+    // Don't trigger if user is typing in an input
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+        return;
+    }
+    
+    // Only if animation tab is active
+    if (!animationPreviewTab || !animationPreviewTab.classList.contains('active')) return;
+    
+    if (e.code === 'Space') {
+        e.preventDefault();
+        toggleAnimation();
+    } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        if (animationPlaying) stopAnimation();
+        prevFrame();
+    } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        if (animationPlaying) stopAnimation();
+        nextFrame();
+    }
+});
+
+// ============================================================================
 // Clear All
 // ============================================================================
 
@@ -1505,6 +1692,12 @@ function clearAll() {
     previewEmpty.style.display = 'block';
     dimensionDisplay.style.display = 'none';
     downloadPngBtn.disabled = downloadJsonBtn.disabled = true;
+    
+    // Hide and stop animation preview
+    stopAnimation();
+    if (animationEmpty) animationEmpty.style.display = 'block';
+    if (animationCanvas) animationCanvas.style.display = 'none';
+    
     showToast('Cleared');
 }
 

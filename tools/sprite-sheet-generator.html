@@ -88,9 +88,8 @@
                 </div>
 
                 <div class="control-group">
-                    <label class="control-label">Power of Two</label>
                     <div class="tool-btn-row">
-                        <button class="btn" id="snapPot">Snap to POT</button>
+                        <button class="btn" id="snapPot">Snap to Power-of-Two</button>
                     </div>
                 </div>
 
@@ -170,23 +169,51 @@
 
                 <section class="preview-section">
                     <div class="section-header">
-                        <h3 class="section-title">Preview</h3>
-                    </div>
-                    <div class="preview-container" id="previewContainer">
-                        <canvas id="previewCanvas" style="display: none;"></canvas>
-                        <p class="preview-empty" id="previewEmpty">Generate to preview</p>
-                    </div>
-                    <div class="dimension-display" id="dimensionDisplay">
-                        <div class="dimension-item">
-                            <span>W:</span>
-                            <span class="dimension-value" id="sheetWidth">0</span>
-                            <span>px</span>
+                        <div class="preview-tabs">
+                            <button class="preview-tab active" id="tabSheet" title="Sheet Preview">Sheet</button>
+                            <button class="preview-tab" id="tabAnimation" title="Animation Preview">Animation</button>
                         </div>
-                        <div class="dimension-item">
-                            <span>H:</span>
-                            <span class="dimension-value" id="sheetHeight">0</span>
-                            <span>px</span>
+                    </div>
+                    
+                    <!-- Sheet Preview Tab -->
+                    <div class="preview-tab-content active" id="sheetPreviewTab">
+                        <div class="preview-container" id="previewContainer">
+                            <canvas id="previewCanvas" style="display: none;"></canvas>
+                            <p class="preview-empty" id="previewEmpty">Generate to preview</p>
                         </div>
+                        <div class="dimension-display" id="dimensionDisplay">
+                            <div class="dimension-item">
+                                <span>W:</span>
+                                <span class="dimension-value" id="sheetWidth">0</span>
+                                <span>px</span>
+                            </div>
+                            <div class="dimension-item">
+                                <span>H:</span>
+                                <span class="dimension-value" id="sheetHeight">0</span>
+                                <span>px</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Animation Preview Tab -->
+                    <div class="preview-tab-content" id="animationPreviewTab">
+                        <div class="animation-preview-container">
+                            <canvas id="animationCanvas"></canvas>
+                            <p class="animation-empty" id="animationEmpty">Add sprites to preview</p>
+                        </div>
+                        <div class="animation-controls">
+                            <button class="btn btn-sm" id="animPrevFrame" title="Previous frame (←)">⏮</button>
+                            <button class="btn btn-sm" id="animPlayPause" title="Play/Pause (Space)">▶</button>
+                            <button class="btn btn-sm" id="animNextFrame" title="Next frame (→)">⏭</button>
+                            <span class="animation-frame-display">
+                                <span id="animCurrentFrame">0</span> / <span id="animTotalFrames">0</span>
+                            </span>
+                            <div class="animation-speed-control">
+                                <label class="animation-speed-label">FPS</label>
+                                <input type="input" class="num-input animation-fps-input" id="animFps" value="12" min="1" max="60">
+                            </div>
+                        </div>
+                        <p class="animation-hint">Space to play/pause • ←→ to step frames</p>
                     </div>
                 </section>
             </main>
