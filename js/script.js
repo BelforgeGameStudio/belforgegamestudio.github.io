@@ -15,9 +15,21 @@ let generatedMetadata = null;
 let draggedIndex = null;
 
 // Undo/Redo state
+// NOTE: Undo/redo only tracks sprite list, not config (tile size, padding, etc.)
+// This is intentional - config changes are easy to adjust and don't feel destructive.
 let undoStack = [];
 let redoStack = [];
 const MAX_UNDO = 50;
+
+// Track all objectURLs we've created so we can revoke them when clearing stacks
+// Maps objectURL string -> reference count (how many states reference it)
+let objectURLRefCounts = new Map();
+
+// Counter for unique empty sprite names (never reuses, even after delete/undo)
+let emptySpritecounter = 0;
+
+// Generation ID to detect stale async operations
+let stateGeneration = 0;
 
 // Import modal state
 let pendingImportImage = null;
@@ -86,27 +98,97 @@ const insertEmptyBtn = $('insertEmptyBtn');
 // Undo/Redo System
 // ============================================================================
 
+/**
+ * Increment reference count for an objectURL.
+ * Call when adding a sprite to any state (current, undo stack, or redo stack).
+ */
+function refURL(url) {
+    if (!url) return;
+    objectURLRefCounts.set(url, (objectURLRefCounts.get(url) || 0) + 1);
+}
+
+/**
+ * Decrement reference count for an objectURL, revoking if it hits zero.
+ * Call when removing a sprite from any state.
+ */
+function unrefURL(url) {
+    if (!url) return;
+    const count = objectURLRefCounts.get(url) || 0;
+    if (count <= 1) {
+        objectURLRefCounts.delete(url);
+        URL.revokeObjectURL(url);
+    } else {
+        objectURLRefCounts.set(url, count - 1);
+    }
+}
+
+/**
+ * Clone current sprites array for storing in undo/redo stack.
+ * Also increments ref counts for all objectURLs in the clone.
+ */
+function cloneSpritesForStack() {
+    return sprites.map(s => {
+        refURL(s.objectURL);
+        return {
+            name: s.name,
+            image: s.image,
+            objectURL: s.objectURL,
+            width: s.width,
+            height: s.height
+        };
+    });
+}
+
+/**
+ * Unref all objectURLs in a state array (when removing from stack).
+ */
+function unrefState(state) {
+    for (const s of state) {
+        unrefURL(s.objectURL);
+    }
+}
+
+/**
+ * Clear an entire stack, properly unreffing all objectURLs.
+ */
+function clearStack(stack) {
+    while (stack.length > 0) {
+        unrefState(stack.pop());
+    }
+}
+
 function saveState() {
-    // Deep clone sprites array (excluding image objects, keep references)
-    const state = sprites.map(s => ({
-        name: s.name,
-        image: s.image,
-        objectURL: s.objectURL,
-        width: s.width,
-        height: s.height
-    }));
-    undoStack.push(state);
-    if (undoStack.length > MAX_UNDO) undoStack.shift();
-    redoStack = []; // Clear redo on new action
+    // Clone current state and push to undo stack
+    undoStack.push(cloneSpritesForStack());
+    
+    // Trim if over limit (unref the removed state)
+    if (undoStack.length > MAX_UNDO) {
+        unrefState(undoStack.shift());
+    }
+    
+    // Clear redo stack on new action
+    clearStack(redoStack);
+    
     updateUndoRedoButtons();
 }
 
 function undo() {
     if (undoStack.length === 0) return;
-    // Save current state to redo
-    redoStack.push(sprites.map(s => ({ ...s })));
-    // Restore previous state
+    
+    // Push current state to redo (with refs)
+    redoStack.push(cloneSpritesForStack());
+    
+    // Unref current sprites (they're being replaced)
+    for (const s of sprites) {
+        unrefURL(s.objectURL);
+    }
+    
+    // Pop and use previous state (refs already counted when it was pushed)
     sprites = undoStack.pop();
+    
+    // Invalidate any pending async operations
+    stateGeneration++;
+    
     renderSpritesGrid();
     updateAll();
     if (generatedCanvas) generateSheet();
@@ -116,10 +198,21 @@ function undo() {
 
 function redo() {
     if (redoStack.length === 0) return;
-    // Save current state to undo
-    undoStack.push(sprites.map(s => ({ ...s })));
-    // Restore redo state
+    
+    // Push current state to undo (with refs)
+    undoStack.push(cloneSpritesForStack());
+    
+    // Unref current sprites (they're being replaced)
+    for (const s of sprites) {
+        unrefURL(s.objectURL);
+    }
+    
+    // Pop and use redo state (refs already counted when it was pushed)
     sprites = redoStack.pop();
+    
+    // Invalidate any pending async operations
+    stateGeneration++;
+    
     renderSpritesGrid();
     updateAll();
     if (generatedCanvas) generateSheet();
@@ -137,8 +230,6 @@ function updateUndoRedoButtons() {
 // ============================================================================
 
 function insertEmptySprite() {
-    saveState();
-    
     // Create transparent canvas
     const canvas = document.createElement('canvas');
     canvas.width = tileSize;
@@ -146,14 +237,30 @@ function insertEmptySprite() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, tileSize, tileSize); // Fully transparent
     
+    // Save state and capture generation BEFORE async operations
+    saveState();
+    const expectedGeneration = ++stateGeneration;
+    
     // Convert to blob and create image
     canvas.toBlob((blob) => {
         if (!blob) { showToast('Failed to create empty sprite', true); return; }
+        
         const objectURL = URL.createObjectURL(blob);
+        // Ref the new URL since it's now part of current state
+        refURL(objectURL);
+        
         const img = new Image();
         img.onload = () => {
+            // Check if state changed (undo/clear) while we were async
+            if (stateGeneration !== expectedGeneration) {
+                // World changed - clean up and bail
+                unrefURL(objectURL);
+                return;
+            }
+            
+            // Use unique counter that never reuses (even after delete/undo)
             const emptySprite = {
-                name: `empty_${String(sprites.length).padStart(3, '0')}`,
+                name: `empty_${String(emptySpritecounter++).padStart(3, '0')}`,
                 image: img,
                 objectURL,
                 width: tileSize,
@@ -164,6 +271,11 @@ function insertEmptySprite() {
             updateAll();
             if (generatedCanvas) generateSheet();
             showToast('Added empty sprite');
+        };
+        img.onerror = () => {
+            // Clean up on failure
+            unrefURL(objectURL);
+            showToast('Failed to create empty sprite', true);
         };
         img.src = objectURL;
     }, 'image/png');
@@ -312,6 +424,10 @@ async function handleFiles(files) {
     // Add regular sprites immediately
     if (regularSprites.length > 0) {
         saveState();
+        // Ref URLs for new sprites being added to current state
+        for (const s of regularSprites) {
+            refURL(s.objectURL);
+        }
         sprites.push(...regularSprites);
         
         // Auto-populate sheet name from first file (only if still default)
@@ -585,6 +701,10 @@ async function performImport() {
                      insertPosition === 'start' ? 0 : clampedIdx;
     
     saveState();
+    // Ref URLs for new sprites being added to current state
+    for (const s of newSprites) {
+        refURL(s.objectURL);
+    }
     sprites.splice(insertIdx, 0, ...newSprites);
     
     // Auto-populate sheet name from imported file (only if still default)
@@ -954,7 +1074,9 @@ function clearDropIndicators() {
 
 function removeSprite(index) {
     saveState();
-    revokeSprite(sprites.splice(index, 1)[0]);
+    const removed = sprites.splice(index, 1)[0];
+    // Unref the removed sprite's URL (undo stack still has a ref if needed)
+    unrefURL(removed.objectURL);
     renderSpritesGrid();
     updateAll();
     if (sprites.length === 0) {
@@ -1163,11 +1285,24 @@ function resetDownloadButtons() {
 
 function clearAll() {
     if (sprites.length > 0) saveState();
-    sprites.forEach(revokeSprite);
+    
+    // Unref all current sprites
+    for (const s of sprites) {
+        unrefURL(s.objectURL);
+    }
     sprites = [];
+    
+    // Also clear undo/redo stacks (user explicitly clearing = fresh start)
+    clearStack(undoStack);
+    clearStack(redoStack);
+    
+    // Invalidate any pending async operations
+    stateGeneration++;
+    
     generatedCanvas = generatedMetadata = null;
     renderSpritesGrid();
     updateStats();
+    updateUndoRedoButtons();
     sizeWarning.classList.remove('show');
     gpuWarning.classList.remove('show');
     previewCanvas.style.display = 'none';
