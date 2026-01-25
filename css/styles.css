@@ -920,13 +920,45 @@ section {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 24px;
-    height: fit-content;
     position: sticky;
     top: 100px;
     display: flex;
     flex-direction: column;
+    max-height: calc(100vh - 120px);
+    overflow: hidden;
+}
+
+.controls-panel-header {
+    flex-shrink: 0;
+    padding: 24px 24px 12px;
+}
+
+.controls-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 24px 16px;
+    display: flex;
+    flex-direction: column;
     gap: 20px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.controls-panel-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.controls-panel-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.controls-panel-content::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.controls-panel-content::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
 }
 
 .control-group {
@@ -960,14 +992,18 @@ section {
     text-transform: uppercase;
 }
 
-/* Action buttons section */
+/* Action buttons section - sticky footer */
+.controls-panel-actions {
+    flex-shrink: 0;
+    padding: 16px 24px 24px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-card);
+}
+
 .action-buttons {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin-top: auto;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
 }
 
 .tool-btn-row {
@@ -979,6 +1015,48 @@ section {
     flex: 1;
     padding: 10px 8px;
     font-size: 11px;
+}
+
+/* Export format selector */
+.export-format-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex: 1.5;
+}
+
+.export-format-row .btn {
+    flex: 1;
+    min-width: 0;
+}
+
+.export-format-select {
+    background: var(--bg-dark);
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    min-width: 90px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 28px;
+}
+
+.export-format-select:hover {
+    border-color: var(--accent);
+}
+
+.export-format-select:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 /* Button overrides for tool controls panel */
@@ -1427,6 +1505,11 @@ section {
     .controls-panel {
         width: 100%;
         position: static;
+        max-height: none;
+    }
+
+    .controls-panel-content {
+        overflow-y: visible;
     }
 
     .tool-header {

@@ -93,6 +93,7 @@ const skipEmptyHint = $('skipEmptyHint');
 const undoBtn = $('undoBtn');
 const redoBtn = $('redoBtn');
 const insertEmptyBtn = $('insertEmptyBtn');
+const exportFormatSelect = $('exportFormat');
 
 // ============================================================================
 // Undo/Redo System
@@ -738,7 +739,7 @@ async function performImport() {
     sprites.splice(insertIdx, 0, ...newSprites);
     
     // Auto-populate sheet name from imported file (only if still default)
-    if (sheetNameInput.value === 'spritesheet_32x32' || sheetNameInput.value === '') {
+    if (sheetNameInput.value === 'spritesheet-32x32' || sheetNameInput.value === '') {
         // Clean up the base name for use as sheet name
         const cleanName = baseName
             .replace(/_\d+$/, '')           // Remove trailing _000 style suffixes
@@ -1311,14 +1312,156 @@ function downloadPng() {
 
 function downloadJson() {
     if (!generatedMetadata) return;
-    const blob = new Blob([JSON.stringify(generatedMetadata, null, 2)], { type: 'application/json' });
+    
+    const format = exportFormatSelect ? exportFormatSelect.value : 'unity';
+    const exported = formatMetadataForExport(generatedMetadata, format);
+    const extension = exported.extension || '.unity.json';
+    
+    const blob = new Blob([exported.content], { type: exported.mimeType || 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.download = getExportName() + '.json';
+    link.download = getExportName() + extension;
     link.href = url;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast('JSON downloaded');
+    showToast(`${getExportName()} • ${format} atlas exported`);
+}
+
+/**
+ * Format metadata for different game engines/frameworks
+ * @param {Object} metadata - The generated sprite sheet metadata
+ * @param {string} format - Export format: 'generic', 'unity', 'godot', 'phaser'
+ * @returns {Object} { content: string, extension: string, mimeType: string }
+ */
+function formatMetadataForExport(metadata, format) {
+    const sheetName = getExportName();
+    
+    switch (format) {
+        case 'unity':
+            return formatForUnity(metadata, sheetName);
+        case 'godot':
+            return formatForGodot(metadata, sheetName);
+        case 'phaser':
+            return formatForPhaser(metadata, sheetName);
+        default:
+            return formatForUnity(metadata, sheetName);
+    }
+}
+
+/**
+ * Unity TextureImporter-compatible format
+ * This generates a secondary data file - the actual .meta file is created by Unity
+ */
+function formatForUnity(metadata, sheetName) {
+    const { width, height, sprites } = metadata;
+    
+    // Unity sprite data format (for use with custom importers or TextMeshPro)
+    const unityData = {
+        textureName: sheetName,
+        textureWidth: width,
+        textureHeight: height,
+        spriteMode: 2, // Multiple sprites
+        pixelsPerUnit: 100,
+        sprites: sprites.map((s, i) => ({
+            name: s.name,
+            // Unity uses bottom-left origin, Y increases upward
+            rect: {
+                x: s.x,
+                y: height - s.y - s.height, // Flip Y coordinate
+                width: s.width,
+                height: s.height
+            },
+            pivot: { x: 0.5, y: 0.5 },
+            border: { x: 0, y: 0, z: 0, w: 0 }
+        }))
+    };
+    
+    return {
+        content: JSON.stringify(unityData, null, 2),
+        extension: '.unity.json',
+        mimeType: 'application/json'
+    };
+}
+
+/**
+ * Godot SpriteFrames resource format (for AnimatedSprite2D)
+ * Can be imported as a .tres resource
+ */
+function formatForGodot(metadata, sheetName) {
+    const { width, height, sprites, tileSize } = metadata;
+    
+    // Godot resource format - JSON that can be converted to .tres
+    const godotData = {
+        resource_type: "SpriteFrames",
+        texture: sheetName + '.png',
+        texture_size: { x: width, y: height },
+        region_enabled: true,
+        animations: {
+            "default": {
+                frames: sprites.map(s => ({
+                    texture: sheetName + '.png',
+                    region: {
+                        position: { x: s.x, y: s.y },
+                        size: { x: s.width, y: s.height }
+                    },
+                    duration: 1.0
+                })),
+                loop: true,
+                speed: 10.0
+            }
+        },
+        // Atlas data for AtlasTexture usage
+        atlas_regions: sprites.map(s => ({
+            name: s.name,
+            region: { x: s.x, y: s.y, w: s.width, h: s.height }
+        }))
+    };
+    
+    return {
+        content: JSON.stringify(godotData, null, 2),
+        extension: '.godot.json',
+        mimeType: 'application/json'
+    };
+}
+
+/**
+ * Phaser 3 Atlas JSON format (JSON Array format)
+ * Compatible with this.load.atlas()
+ */
+function formatForPhaser(metadata, sheetName) {
+    const { width, height, sprites } = metadata;
+    
+    // Phaser JSON Array format
+    const phaserData = {
+        textures: [{
+            image: sheetName + '.png',
+            format: 'RGBA8888',
+            size: { w: width, h: height },
+            scale: 1,
+            frames: sprites.map(s => ({
+                filename: s.name,
+                frame: { x: s.x, y: s.y, w: s.width, h: s.height },
+                rotated: false,
+                trimmed: false,
+                spriteSourceSize: { x: 0, y: 0, w: s.width, h: s.height },
+                sourceSize: { w: s.width, h: s.height },
+                anchor: { x: 0.5, y: 0.5 }
+            }))
+        }],
+        meta: {
+            app: 'Belforge Sprite Sheet Generator',
+            version: '1.0',
+            format: 'RGBA8888',
+            size: { w: width, h: height },
+            scale: '1'
+        }
+    };
+    
+    return {
+        content: JSON.stringify(phaserData, null, 2),
+        extension: '.phaser.json',
+        mimeType: 'application/json'
+    };
 }
 
 function resetDownloadButtons() { 

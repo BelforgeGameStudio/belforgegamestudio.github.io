@@ -31,8 +31,11 @@
     <div class="tool-container">
         <div class="tool-grid">
             <aside class="controls-panel">
-                <h2 class="panel-title">Configuration</h2>
+                <div class="controls-panel-header">
+                    <h2 class="panel-title">Configuration</h2>
+                </div>
                 
+                <div class="controls-panel-content">
                 <div class="control-group">
                     <label class="control-label">Tile Size</label>
                     <div class="tile-size-options">
@@ -59,7 +62,7 @@
                 <div class="control-group">
                     <div class="input-group">
                         <label class="input-group-label">Sheet Name</label>
-                        <input type="text" class="num-input" id="sheetName" value="spritesheet_32x32" placeholder="spritesheet" style="text-align:left;padding-left:12px;">
+                        <input type="text" class="num-input" id="sheetName" value="spritesheet-32x32" placeholder="spritesheet" style="text-align:left;padding-left:12px;">
                     </div>
                 </div>
 
@@ -117,14 +120,24 @@
                     </div>
                     <p class="warning-text">Sheet exceeds <span class="warning-value" id="gpuLimit">8192</span>px</p>
                 </div>
+                </div><!-- end controls-panel-content -->
 
-                <div class="action-buttons">
-                    <button class="btn btn-primary" id="generateBtn" disabled>Generate Sheet</button>
-                    <div class="tool-btn-row">
-                        <button class="btn" id="downloadPng" disabled>PNG</button>
-                        <button class="btn" id="downloadJson" disabled>JSON</button>
+                <div class="controls-panel-actions">
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="generateBtn" disabled>Generate Sheet</button>
+                        <div class="tool-btn-row">
+                            <button class="btn" id="downloadPng" disabled>PNG</button>
+                            <div class="export-format-row">
+                                <button class="btn" id="downloadJson" disabled>JSON</button>
+                                <select class="export-format-select" id="exportFormat" title="Export format">
+                                    <option value="unity">Unity</option>
+                                    <option value="godot">Godot</option>
+                                    <option value="phaser">Phaser</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn" id="clearBtn">Clear All</button>
                     </div>
-                    <button class="btn" id="clearBtn">Clear All</button>
                 </div>
             </aside>
 
