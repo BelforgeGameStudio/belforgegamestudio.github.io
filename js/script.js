@@ -205,7 +205,7 @@ function undo() {
     updateAll();
     if (generatedCanvas) generateSheet();
     updateUndoRedoButtons();
-    showToast(`Undo: ${label}`);
+    showToast(`↶ ${label}`);
 }
 
 function redo() {
@@ -234,7 +234,7 @@ function redo() {
     updateAll();
     if (generatedCanvas) generateSheet();
     updateUndoRedoButtons();
-    showToast(`Redo: ${label}`);
+    showToast(`↷ ${label}`);
 }
 
 function updateUndoRedoButtons() {
@@ -801,6 +801,23 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && importModal.classList.contains('show')) {
         closeImportModal();
     }
+    
+    // Undo/Redo shortcuts (Ctrl+Z / Ctrl+Shift+Z on Windows/Linux, Cmd+Z / Cmd+Shift+Z on Mac)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        if (e.key === 'z' || e.key === 'Z') {
+            // Don't trigger if user is typing in an input
+            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+                return;
+            }
+            
+            e.preventDefault();
+            if (e.shiftKey) {
+                redo();
+            } else {
+                undo();
+            }
+        }
+    }
 });
 
 document.querySelectorAll('.import-mode-tab').forEach(tab => {
@@ -1314,6 +1331,11 @@ function resetDownloadButtons() {
 // ============================================================================
 
 function clearAll() {
+    // Nothing to clear - bail early
+    if (sprites.length === 0 && undoStack.length === 0 && redoStack.length === 0) {
+        return;
+    }
+    
     // Don't save state - user is explicitly clearing everything including undo history
     // If they want to undo a clear, they shouldn't have cleared in the first place!
     
