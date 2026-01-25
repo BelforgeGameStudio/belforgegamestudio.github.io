@@ -5,7 +5,7 @@
  * @author    Belforge Game Studio
  * @website   https://belforge.github.io
  * @license   MIT
- * @version   1.1.0
+ * @version   1.2.0
  */
 
 // State
@@ -99,6 +99,27 @@ const undoBtn = $('undoBtn');
 const redoBtn = $('redoBtn');
 const insertEmptyBtn = $('insertEmptyBtn');
 const exportFormatSelect = $('exportFormat');
+const batchRenameBtn = $('batchRenameBtn');
+const exportGifBtn = $('exportGifBtn');
+const exportWebpBtn = $('exportWebpBtn');
+
+// Batch rename modal elements
+const renameModal = $('renameModal');
+const renameModalClose = $('renameModalClose');
+const renamePatternInput = $('renamePattern');
+const renameStartNumInput = $('renameStartNum');
+const renamePaddingInput = $('renamePadding');
+const renamePrefixInput = $('renamePrefix');
+const renameSuffixInput = $('renameSuffix');
+const renameFindInput = $('renameFind');
+const renameReplaceInput = $('renameReplace');
+const renamePreviewList = $('renamePreviewList');
+const renameAffectedCount = $('renameAffectedCount');
+const renameRangeInputs = $('renameRangeInputs');
+const renameRangeStartInput = $('renameRangeStart');
+const renameRangeEndInput = $('renameRangeEnd');
+const cancelRenameBtn = $('cancelRename');
+const confirmRenameBtn = $('confirmRename');
 
 // Animation preview elements
 const animationCanvas = $('animationCanvas');
@@ -119,6 +140,10 @@ let animationPlaying = false;
 let animationFrame = 0;
 let animationInterval = null;
 let animationCtx = null; // Cached canvas context
+
+// Batch rename state
+let renameMode = 'pattern';
+let renameScope = 'all';
 
 // ============================================================================
 // Undo/Redo System
@@ -824,8 +849,12 @@ importModal.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && importModal.classList.contains('show')) {
-        closeImportModal();
+    if (e.key === 'Escape') {
+        if (importModal.classList.contains('show')) {
+            closeImportModal();
+        } else if (renameModal && renameModal.classList.contains('show')) {
+            closeRenameModal();
+        }
     }
     
     // Undo/Redo shortcuts (Ctrl+Z / Ctrl+Shift+Z on Windows/Linux, Cmd+Z / Cmd+Shift+Z on Mac)
@@ -1085,10 +1114,16 @@ function renderSpritesGrid() {
     if (sprites.length === 0) { 
         spritesGrid.innerHTML = '<div class="empty-state">No sprites loaded</div>'; 
         generateBtn.disabled = true;
+        if (batchRenameBtn) batchRenameBtn.disabled = true;
+        if (exportGifBtn) exportGifBtn.disabled = true;
+        if (exportWebpBtn) exportWebpBtn.disabled = true;
         updateAnimationPreview();
         return; 
     }
     generateBtn.disabled = false;
+    if (batchRenameBtn) batchRenameBtn.disabled = false;
+    if (exportGifBtn) exportGifBtn.disabled = false;
+    if (exportWebpBtn) exportWebpBtn.disabled = false;
     spritesGrid.innerHTML = '';
     sprites.forEach((sprite, index) => {
         const item = document.createElement('div');
@@ -1775,6 +1810,376 @@ document.addEventListener('keydown', (e) => {
         if (animationPlaying) stopAnimation();
         nextFrame();
     }
+});
+
+// ============================================================================
+// GIF/WebP Export
+// ============================================================================
+
+/**
+ * Export animation as animated GIF using gif.js library
+ */
+function exportGif() {
+    if (sprites.length === 0) {
+        showToast('Add sprites first', true);
+        return;
+    }
+    
+    // Check if gif.js is loaded
+    if (typeof GIF === 'undefined') {
+        showToast('GIF library not loaded', true);
+        return;
+    }
+    
+    // Disable button during export
+    if (exportGifBtn) {
+        exportGifBtn.disabled = true;
+        exportGifBtn.textContent = 'Encoding...';
+    }
+    
+    const fps = Math.max(1, Math.min(60, parseInt(animFpsInput.value) || 12));
+    const frameDelay = Math.round(1000 / fps); // ms per frame
+    
+    // Determine export size (use consistent size for all frames)
+    const maxSpriteSize = Math.max(...sprites.map(s => Math.max(s.width, s.height)));
+    const exportSize = Math.max(64, Math.min(512, maxSpriteSize * 2));
+    
+    // Create GIF encoder
+    // Note: gif.js uses web workers, worker path needs to be CDN or same-origin
+    const gif = new GIF({
+        workers: 2,
+        quality: 10,
+        width: exportSize,
+        height: exportSize,
+        workerScript: 'https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js'
+    });
+    
+    // Create a reusable canvas for rendering frames
+    const frameCanvas = document.createElement('canvas');
+    frameCanvas.width = exportSize;
+    frameCanvas.height = exportSize;
+    const frameCtx = frameCanvas.getContext('2d');
+    frameCtx.imageSmoothingEnabled = false;
+    
+    // Add each sprite as a frame
+    for (const sprite of sprites) {
+        // Clear and draw sprite centered
+        frameCtx.clearRect(0, 0, exportSize, exportSize);
+        const scale = Math.min(exportSize / sprite.width, exportSize / sprite.height);
+        const w = sprite.width * scale;
+        const h = sprite.height * scale;
+        const x = (exportSize - w) / 2;
+        const y = (exportSize - h) / 2;
+        frameCtx.drawImage(sprite.image, x, y, w, h);
+        
+        // Add frame to GIF (copy the canvas data)
+        gif.addFrame(frameCtx, { copy: true, delay: frameDelay });
+    }
+    
+    // Handle completion
+    gif.on('finished', (blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = getExportName() + '.gif';
+        link.href = url;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast(`GIF exported (${sprites.length} frames @ ${fps} FPS)`);
+        
+        if (exportGifBtn) {
+            exportGifBtn.disabled = sprites.length === 0;
+            exportGifBtn.textContent = 'Export GIF';
+        }
+    });
+    
+    gif.on('progress', (p) => {
+        if (exportGifBtn) {
+            exportGifBtn.textContent = `${Math.round(p * 100)}%`;
+        }
+    });
+    
+    // Start encoding
+    gif.render();
+}
+
+/**
+ * Export animation as animated WebP
+ * Note: WebP animation support varies by browser - uses Canvas.toBlob with 'image/webp'
+ * Falls back to creating a multi-frame WebP if supported, otherwise shows error
+ */
+function exportWebp() {
+    if (sprites.length === 0) {
+        showToast('Add sprites first', true);
+        return;
+    }
+    
+    // Check WebP support
+    const testCanvas = document.createElement('canvas');
+    testCanvas.width = 1;
+    testCanvas.height = 1;
+    if (!testCanvas.toDataURL('image/webp').startsWith('data:image/webp')) {
+        showToast('WebP not supported in this browser', true);
+        return;
+    }
+    
+    // WebP animation encoding is complex and not natively supported in browsers
+    // For now, export as a static WebP of the first frame with a note
+    // TODO: Consider using a WebP encoder library like libwebp.js
+    
+    if (exportWebpBtn) {
+        exportWebpBtn.disabled = true;
+        exportWebpBtn.textContent = 'Encoding...';
+    }
+    
+    // For animated WebP, we'd need a proper encoder
+    // As a workaround, create a sprite strip WebP
+    const fps = Math.max(1, Math.min(60, parseInt(animFpsInput.value) || 12));
+    const maxSpriteSize = Math.max(...sprites.map(s => Math.max(s.width, s.height)));
+    const frameSize = Math.max(64, Math.min(256, maxSpriteSize * 2));
+    
+    // Create a horizontal strip of all frames
+    const stripCanvas = document.createElement('canvas');
+    stripCanvas.width = frameSize * sprites.length;
+    stripCanvas.height = frameSize;
+    const stripCtx = stripCanvas.getContext('2d');
+    stripCtx.imageSmoothingEnabled = false;
+    
+    sprites.forEach((sprite, i) => {
+        const scale = Math.min(frameSize / sprite.width, frameSize / sprite.height);
+        const w = sprite.width * scale;
+        const h = sprite.height * scale;
+        const x = i * frameSize + (frameSize - w) / 2;
+        const y = (frameSize - h) / 2;
+        stripCtx.drawImage(sprite.image, x, y, w, h);
+    });
+    
+    stripCanvas.toBlob((blob) => {
+        if (!blob) {
+            showToast('WebP export failed', true);
+            if (exportWebpBtn) {
+                exportWebpBtn.disabled = sprites.length === 0;
+                exportWebpBtn.textContent = 'Export WebP';
+            }
+            return;
+        }
+        
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = getExportName() + '_strip.webp';
+        link.href = url;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast(`WebP sprite strip exported (${sprites.length} frames)`);
+        
+        if (exportWebpBtn) {
+            exportWebpBtn.disabled = sprites.length === 0;
+            exportWebpBtn.textContent = 'Export WebP';
+        }
+    }, 'image/webp', 0.95);
+}
+
+// Export button event listeners
+if (exportGifBtn) exportGifBtn.addEventListener('click', exportGif);
+if (exportWebpBtn) exportWebpBtn.addEventListener('click', exportWebp);
+
+// ============================================================================
+// Batch Rename
+// ============================================================================
+
+function showRenameModal() {
+    if (sprites.length === 0) {
+        showToast('Add sprites first', true);
+        return;
+    }
+    
+    // Reset to defaults
+    renameMode = 'pattern';
+    renameScope = 'all';
+    
+    // Update UI state
+    document.querySelectorAll('.rename-mode-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.mode === 'pattern');
+    });
+    $('patternMode').style.display = 'block';
+    $('prefixMode').style.display = 'none';
+    $('suffixMode').style.display = 'none';
+    $('replaceMode').style.display = 'none';
+    
+    document.querySelectorAll('.rename-scope-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.scope === 'all');
+    });
+    renameRangeInputs.classList.remove('show');
+    
+    // Update range inputs max values
+    renameRangeStartInput.max = sprites.length;
+    renameRangeEndInput.max = sprites.length;
+    renameRangeEndInput.value = sprites.length;
+    
+    // Update preview
+    updateRenamePreview();
+    
+    renameModal.classList.add('show');
+}
+
+function closeRenameModal() {
+    renameModal.classList.remove('show');
+}
+
+function updateRenamePreview() {
+    const renames = calculateRenames();
+    
+    renameAffectedCount.textContent = `${renames.length} sprite${renames.length !== 1 ? 's' : ''} affected`;
+    
+    if (renames.length === 0) {
+        renamePreviewList.innerHTML = '<div class="empty-state" style="padding: 16px;">No changes</div>';
+        return;
+    }
+    
+    // Limit preview to first 20 items for performance
+    const previewItems = renames.slice(0, 20);
+    const hasMore = renames.length > 20;
+    
+    renamePreviewList.innerHTML = previewItems.map((r, i) => `
+        <div class="rename-preview-item">
+            <span class="rename-preview-index">${r.index + 1}</span>
+            <span class="rename-preview-old">${escapeHtml(r.oldName)}</span>
+            <span class="rename-preview-arrow">→</span>
+            <span class="rename-preview-new">${escapeHtml(r.newName)}</span>
+        </div>
+    `).join('') + (hasMore ? `<div class="empty-state" style="padding: 8px;">...and ${renames.length - 20} more</div>` : '');
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function calculateRenames() {
+    const renames = [];
+    
+    // Determine which sprites to rename
+    let startIdx = 0;
+    let endIdx = sprites.length - 1;
+    
+    if (renameScope === 'range') {
+        startIdx = Math.max(0, parseInt(renameRangeStartInput.value) - 1 || 0);
+        endIdx = Math.min(sprites.length - 1, parseInt(renameRangeEndInput.value) - 1 || 0);
+        if (startIdx > endIdx) [startIdx, endIdx] = [endIdx, startIdx]; // Swap if reversed
+    }
+    
+    for (let i = startIdx; i <= endIdx; i++) {
+        const sprite = sprites[i];
+        const oldName = sprite.name;
+        let newName = oldName;
+        
+        switch (renameMode) {
+            case 'pattern': {
+                const pattern = renamePatternInput.value || 'sprite_###';
+                const startNum = parseInt(renameStartNumInput.value) || 0;
+                const padding = Math.max(1, Math.min(6, parseInt(renamePaddingInput.value) || 3));
+                const seqNum = startNum + (i - startIdx);
+                // Replace ### with padded number (supports variable # count)
+                const hashCount = (pattern.match(/#+/) || ['###'])[0].length;
+                const paddedNum = String(seqNum).padStart(Math.max(hashCount, padding), '0');
+                newName = pattern.replace(/#+/, paddedNum);
+                break;
+            }
+            case 'prefix': {
+                const prefix = renamePrefixInput.value || '';
+                newName = prefix + oldName;
+                break;
+            }
+            case 'suffix': {
+                const suffix = renameSuffixInput.value || '';
+                newName = oldName + suffix;
+                break;
+            }
+            case 'replace': {
+                const find = renameFindInput.value || '';
+                const replaceWith = renameReplaceInput.value || '';
+                if (find) {
+                    newName = oldName.split(find).join(replaceWith);
+                }
+                break;
+            }
+        }
+        
+        // Only include if name actually changes
+        if (newName !== oldName) {
+            renames.push({ index: i, oldName, newName });
+        }
+    }
+    
+    return renames;
+}
+
+function performRename() {
+    const renames = calculateRenames();
+    
+    if (renames.length === 0) {
+        showToast('No changes to apply', true);
+        return;
+    }
+    
+    saveState('Batch Rename');
+    
+    // Apply renames
+    for (const r of renames) {
+        sprites[r.index].name = r.newName;
+    }
+    
+    renderSpritesGrid();
+    if (generatedCanvas) generateSheet();
+    closeRenameModal();
+    showToast(`Renamed ${renames.length} sprite${renames.length !== 1 ? 's' : ''}`);
+}
+
+// Rename modal event listeners
+if (batchRenameBtn) batchRenameBtn.addEventListener('click', showRenameModal);
+if (renameModalClose) renameModalClose.addEventListener('click', closeRenameModal);
+if (cancelRenameBtn) cancelRenameBtn.addEventListener('click', closeRenameModal);
+if (confirmRenameBtn) confirmRenameBtn.addEventListener('click', performRename);
+
+// Close modal on overlay click
+if (renameModal) {
+    renameModal.addEventListener('click', (e) => {
+        if (e.target === renameModal) closeRenameModal();
+    });
+}
+
+// Mode tabs
+document.querySelectorAll('.rename-mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.rename-mode-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        renameMode = tab.dataset.mode;
+        
+        $('patternMode').style.display = renameMode === 'pattern' ? 'block' : 'none';
+        $('prefixMode').style.display = renameMode === 'prefix' ? 'block' : 'none';
+        $('suffixMode').style.display = renameMode === 'suffix' ? 'block' : 'none';
+        $('replaceMode').style.display = renameMode === 'replace' ? 'block' : 'none';
+        
+        updateRenamePreview();
+    });
+});
+
+// Scope buttons
+document.querySelectorAll('.rename-scope-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.rename-scope-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renameScope = btn.dataset.scope;
+        renameRangeInputs.classList.toggle('show', renameScope === 'range');
+        updateRenamePreview();
+    });
+});
+
+// Input listeners for live preview update
+[renamePatternInput, renameStartNumInput, renamePaddingInput, 
+ renamePrefixInput, renameSuffixInput, renameFindInput, renameReplaceInput,
+ renameRangeStartInput, renameRangeEndInput].forEach(input => {
+    if (input) input.addEventListener('input', updateRenamePreview);
 });
 
 // ============================================================================

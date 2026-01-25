@@ -1472,6 +1472,19 @@ section {
     margin-top: 12px;
 }
 
+.animation-export-row {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.animation-export-row .btn-sm {
+    min-width: 100px;
+}
+
 /* ==========================================================================
    23. Sprite Sheet Generator - Import Modal
    ========================================================================== */
@@ -1611,6 +1624,173 @@ section {
 }
 
 .insert-index-input.show {
+    display: block;
+}
+
+/* ==========================================================================
+   24. Batch Rename Modal
+   ========================================================================== */
+
+.rename-mode-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.rename-mode-tab {
+    flex: 1;
+    min-width: 80px;
+    background: var(--bg-dark);
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 6px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.rename-mode-tab:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.rename-mode-tab.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.rename-mode-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.rename-preview {
+    background: var(--bg-dark);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.rename-preview-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.rename-preview-header span:last-child {
+    color: var(--accent);
+}
+
+.rename-preview-list {
+    max-height: 180px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.rename-preview-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.rename-preview-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.rename-preview-list::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.rename-preview-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+}
+
+.rename-preview-item:last-child {
+    border-bottom: none;
+}
+
+.rename-preview-index {
+    color: var(--text-muted);
+    min-width: 24px;
+}
+
+.rename-preview-old {
+    color: var(--text-dim);
+    text-decoration: line-through;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rename-preview-arrow {
+    color: var(--accent);
+}
+
+.rename-preview-new {
+    color: var(--text);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rename-scope-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.rename-scope-options {
+    display: flex;
+    gap: 8px;
+}
+
+.rename-scope-btn {
+    flex: 1;
+    background: var(--bg-dark);
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.rename-scope-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.rename-scope-btn.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.rename-range-inputs {
+    display: none;
+    margin-top: 8px;
+}
+
+.rename-range-inputs.show {
     display: block;
 }
 

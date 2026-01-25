@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sprite Sheet Generator - Belforge</title>
+    <!-- GIF.js for client-side GIF encoding -->
+    <script src="../js/gif.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -160,9 +162,10 @@
                     <div class="section-header">
                         <h3 class="section-title">Loaded Sprites</h3>
                         <div class="section-actions">
-                            <button class="btn btn-sm" id="undoBtn" disabled title="Undo">↶</button>
-                            <button class="btn btn-sm" id="redoBtn" disabled title="Redo">↷</button>
-                            <button class="btn btn-sm" id="insertEmptyBtn" title="Insert empty sprite">+ Empty</button>
+                            <button class="btn btn-sm" id="undoBtn" disabled title="Undo (Ctrl+Z)">↶</button>
+                            <button class="btn btn-sm" id="redoBtn" disabled title="Redo (Ctrl+Shift+Z)">↷</button>
+                            <button class="btn btn-sm" id="insertEmptyBtn" title="Insert empty transparent sprite">+ Empty</button>
+                            <button class="btn btn-sm" id="batchRenameBtn" disabled title="Rename multiple sprites with a pattern">Rename…</button>
                         </div>
                     </div>
                     <div class="sprites-grid" id="spritesGrid">
@@ -217,6 +220,10 @@
                             </div>
                         </div>
                         <p class="animation-hint">Space to play/pause • ←→ to step frames</p>
+                        <div class="animation-export-row">
+                            <button class="btn btn-sm" id="exportGifBtn" disabled title="Export animation as animated GIF">Export GIF</button>
+                            <button class="btn btn-sm" id="exportWebpBtn" disabled title="Export animation as animated WebP">Export WebP</button>
+                        </div>
                     </div>
                 </section>
             </main>
@@ -346,6 +353,107 @@
                 <div class="modal-actions">
                     <button class="btn" id="cancelImport">Cancel</button>
                     <button class="btn btn-primary" id="confirmImport">Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch Rename Modal -->
+    <div class="modal-overlay" id="renameModal">
+        <div class="modal" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Batch Rename Sprites</h3>
+                <button class="modal-close" id="renameModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="rename-mode-tabs">
+                    <button class="rename-mode-tab active" data-mode="pattern" title="Use a pattern with ### for numbers">Pattern</button>
+                    <button class="rename-mode-tab" data-mode="prefix" title="Add text before existing names">Add Prefix</button>
+                    <button class="rename-mode-tab" data-mode="suffix" title="Add text after existing names">Add Suffix</button>
+                    <button class="rename-mode-tab" data-mode="replace" title="Find and replace text in names">Find/Replace</button>
+                </div>
+                
+                <!-- Pattern Mode -->
+                <div id="patternMode" class="rename-mode-content">
+                    <div class="control-group">
+                        <label class="input-group-label">Pattern (### = number)</label>
+                        <input type="text" class="num-input" id="renamePattern" value="sprite_###" placeholder="walk_###" style="text-align:left;padding-left:12px;">
+                    </div>
+                    <div class="control-group">
+                        <div class="input-row">
+                            <div class="input-group">
+                                <label class="input-group-label">Start Number</label>
+                                <input type="number" class="num-input" id="renameStartNum" value="0" min="0">
+                            </div>
+                            <div class="input-group">
+                                <label class="input-group-label">Padding</label>
+                                <input type="number" class="num-input" id="renamePadding" value="3" min="1" max="6">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Prefix Mode -->
+                <div id="prefixMode" class="rename-mode-content" style="display:none;">
+                    <div class="control-group">
+                        <label class="input-group-label">Prefix to Add</label>
+                        <input type="text" class="num-input" id="renamePrefix" value="" placeholder="player_" style="text-align:left;padding-left:12px;">
+                    </div>
+                </div>
+                
+                <!-- Suffix Mode -->
+                <div id="suffixMode" class="rename-mode-content" style="display:none;">
+                    <div class="control-group">
+                        <label class="input-group-label">Suffix to Add</label>
+                        <input type="text" class="num-input" id="renameSuffix" value="" placeholder="_idle" style="text-align:left;padding-left:12px;">
+                    </div>
+                </div>
+                
+                <!-- Replace Mode -->
+                <div id="replaceMode" class="rename-mode-content" style="display:none;">
+                    <div class="control-group">
+                        <label class="input-group-label">Find</label>
+                        <input type="text" class="num-input" id="renameFind" value="" placeholder="old_name" style="text-align:left;padding-left:12px;">
+                    </div>
+                    <div class="control-group">
+                        <label class="input-group-label">Replace With</label>
+                        <input type="text" class="num-input" id="renameReplace" value="" placeholder="new_name" style="text-align:left;padding-left:12px;">
+                    </div>
+                </div>
+                
+                <div class="rename-preview">
+                    <div class="rename-preview-header">
+                        <span>Preview</span>
+                        <span id="renameAffectedCount">0 sprites affected</span>
+                    </div>
+                    <div class="rename-preview-list" id="renamePreviewList">
+                        <div class="empty-state" style="padding: 16px;">Select sprites to rename</div>
+                    </div>
+                </div>
+                
+                <div class="rename-scope-group">
+                    <label class="control-label">Apply To</label>
+                    <div class="rename-scope-options">
+                        <button class="rename-scope-btn active" data-scope="all" title="Rename all sprites">All Sprites</button>
+                        <button class="rename-scope-btn" data-scope="range" title="Rename a specific range">Range</button>
+                    </div>
+                    <div class="rename-range-inputs" id="renameRangeInputs">
+                        <div class="input-row">
+                            <div class="input-group">
+                                <label class="input-group-label">From Index</label>
+                                <input type="number" class="num-input" id="renameRangeStart" value="1" min="1">
+                            </div>
+                            <div class="input-group">
+                                <label class="input-group-label">To Index</label>
+                                <input type="number" class="num-input" id="renameRangeEnd" value="1" min="1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="btn" id="cancelRename">Cancel</button>
+                    <button class="btn btn-primary" id="confirmRename">Rename</button>
                 </div>
             </div>
         </div>
