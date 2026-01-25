@@ -110,6 +110,10 @@ function refURL(url) {
 /**
  * Decrement reference count for an objectURL, revoking if it hits zero.
  * Call when removing a sprite from any state.
+ * 
+ * IMPORTANT: Always use this instead of URL.revokeObjectURL() directly!
+ * Direct revocation bypasses ref-counting and will cause "why are my images 
+ * randomly missing" bugs when sprites are shared across undo/redo stacks.
  */
 function unrefURL(url) {
     if (!url) return;
@@ -153,17 +157,20 @@ function unrefState(state) {
  */
 function clearStack(stack) {
     while (stack.length > 0) {
-        unrefState(stack.pop());
+        const entry = stack.pop();
+        // Handle both old format (raw state) and new format ({ state, label })
+        const state = entry.state || entry;
+        unrefState(state);
     }
 }
 
-function saveState() {
-    // Clone current state and push to undo stack
-    undoStack.push(cloneSpritesForStack());
+function saveState(label = 'Action') {
+    // Clone current state and push to undo stack with label
+    undoStack.push({ state: cloneSpritesForStack(), label });
     
     // Trim if over limit (unref the removed state)
     if (undoStack.length > MAX_UNDO) {
-        unrefState(undoStack.shift());
+        unrefState(undoStack.shift().state);
     }
     
     // Clear redo stack on new action
@@ -175,16 +182,21 @@ function saveState() {
 function undo() {
     if (undoStack.length === 0) return;
     
-    // Push current state to redo (with refs)
-    redoStack.push(cloneSpritesForStack());
+    // Pop the entry we're undoing
+    const entry = undoStack.pop();
+    const prevState = entry.state || entry; // Support old format
+    const label = entry.label || 'Action';
+    
+    // Push current state to redo (no label needed for redo)
+    redoStack.push({ state: cloneSpritesForStack(), label });
     
     // Unref current sprites (they're being replaced)
     for (const s of sprites) {
         unrefURL(s.objectURL);
     }
     
-    // Pop and use previous state (refs already counted when it was pushed)
-    sprites = undoStack.pop();
+    // Use previous state (refs already counted when it was pushed)
+    sprites = prevState;
     
     // Invalidate any pending async operations
     stateGeneration++;
@@ -193,22 +205,27 @@ function undo() {
     updateAll();
     if (generatedCanvas) generateSheet();
     updateUndoRedoButtons();
-    showToast('Undo');
+    showToast(`Undo: ${label}`);
 }
 
 function redo() {
     if (redoStack.length === 0) return;
     
-    // Push current state to undo (with refs)
-    undoStack.push(cloneSpritesForStack());
+    // Pop the entry we're redoing
+    const entry = redoStack.pop();
+    const nextState = entry.state || entry; // Support old format
+    const label = entry.label || 'Action';
+    
+    // Push current state to undo (with the label from what we're redoing)
+    undoStack.push({ state: cloneSpritesForStack(), label });
     
     // Unref current sprites (they're being replaced)
     for (const s of sprites) {
         unrefURL(s.objectURL);
     }
     
-    // Pop and use redo state (refs already counted when it was pushed)
-    sprites = redoStack.pop();
+    // Use redo state (refs already counted when it was pushed)
+    sprites = nextState;
     
     // Invalidate any pending async operations
     stateGeneration++;
@@ -217,7 +234,7 @@ function redo() {
     updateAll();
     if (generatedCanvas) generateSheet();
     updateUndoRedoButtons();
-    showToast('Redo');
+    showToast(`Redo: ${label}`);
 }
 
 function updateUndoRedoButtons() {
@@ -230,16 +247,18 @@ function updateUndoRedoButtons() {
 // ============================================================================
 
 function insertEmptySprite() {
-    // Create transparent canvas
+    // Create transparent canvas at current tile size
+    // NOTE: If user later changes tile size, this empty will be "wrong" size.
+    // This is intentional - empties are meant to match the tile size at creation.
     const canvas = document.createElement('canvas');
     canvas.width = tileSize;
     canvas.height = tileSize;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, tileSize, tileSize); // Fully transparent
     
-    // Save state and capture generation BEFORE async operations
-    saveState();
-    const expectedGeneration = ++stateGeneration;
+    // Capture generation BEFORE saveState (operation hasn't started yet)
+    const expectedGeneration = stateGeneration;
+    saveState('Insert Empty');
     
     // Convert to blob and create image
     canvas.toBlob((blob) => {
@@ -346,16 +365,28 @@ document.querySelectorAll('.sort-btn').forEach(btn => {
 
 function sortSprites(type) {
     if (sprites.length < 2) return;
-    saveState();
+    
+    // Map sort type to user-friendly label
+    const labels = {
+        'name-asc': 'Sort (A→Z)',
+        'name-desc': 'Sort (Z→A)',
+        'natural': 'Sort (Natural)',
+        'reverse': 'Reverse Order'
+    };
+    
+    const label = labels[type] || 'Sort';
+    saveState(label);
+    
     switch (type) {
         case 'name-asc': sprites.sort((a, b) => a.name.localeCompare(b.name)); break;
         case 'name-desc': sprites.sort((a, b) => b.name.localeCompare(a.name)); break;
         case 'natural': sprites.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })); break;
         case 'reverse': sprites.reverse(); break;
     }
+    
     renderSpritesGrid();
     if (generatedCanvas) generateSheet();
-    showToast('Sorted: ' + type);
+    showToast(label);
 }
 
 // ============================================================================
@@ -423,7 +454,7 @@ async function handleFiles(files) {
     
     // Add regular sprites immediately
     if (regularSprites.length > 0) {
-        saveState();
+        saveState('Add Sprites');
         // Ref URLs for new sprites being added to current state
         for (const s of regularSprites) {
             refURL(s.objectURL);
@@ -475,9 +506,8 @@ function loadImage(file) {
     });
 }
 
-function revokeSprite(sprite) { 
-    if (sprite.objectURL) URL.revokeObjectURL(sprite.objectURL); 
-}
+// NOTE: No revokeSprite() helper - always use unrefURL() to properly handle ref-counting!
+// Direct URL.revokeObjectURL() bypasses ref-counting and causes "missing images" bugs.
 
 // ============================================================================
 // Import Modal
@@ -700,7 +730,7 @@ async function performImport() {
     const insertIdx = insertPosition === 'end' ? sprites.length :
                      insertPosition === 'start' ? 0 : clampedIdx;
     
-    saveState();
+    saveState(importMode === 'slice' ? 'Import Sheet' : 'Import Image');
     // Ref URLs for new sprites being added to current state
     for (const s of newSprites) {
         refURL(s.objectURL);
@@ -1073,7 +1103,7 @@ function clearDropIndicators() {
 }
 
 function removeSprite(index) {
-    saveState();
+    saveState('Remove Sprite');
     const removed = sprites.splice(index, 1)[0];
     // Unref the removed sprite's URL (undo stack still has a ref if needed)
     unrefURL(removed.objectURL);
@@ -1090,7 +1120,7 @@ function removeSprite(index) {
 
 function reorderSprites(from, to) {
     if (from === to) return;
-    saveState();
+    saveState('Reorder Sprites');
     sprites.splice(to, 0, sprites.splice(from, 1)[0]);
     renderSpritesGrid();
     if (generatedCanvas) generateSheet();
@@ -1284,7 +1314,8 @@ function resetDownloadButtons() {
 // ============================================================================
 
 function clearAll() {
-    if (sprites.length > 0) saveState();
+    // Don't save state - user is explicitly clearing everything including undo history
+    // If they want to undo a clear, they shouldn't have cleared in the first place!
     
     // Unref all current sprites
     for (const s of sprites) {
@@ -1292,7 +1323,7 @@ function clearAll() {
     }
     sprites = [];
     
-    // Also clear undo/redo stacks (user explicitly clearing = fresh start)
+    // Clear undo/redo stacks (user explicitly clearing = fresh start)
     clearStack(undoStack);
     clearStack(redoStack);
     
