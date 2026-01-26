@@ -444,62 +444,8 @@
     }
 
     // ==========================================================================
-    // UI Updates
+    // UI Updates (uses BelforgeUtils for formatNumber, formatTime, showToast)
     // ==========================================================================
-
-    /**
-     * Formats a number for display with appropriate suffixes.
-     * @param {number} num - Number to format
-     * @param {number} decimals - Decimal places
-     * @returns {string} Formatted number string
-     */
-    function formatNumber(num, decimals = 2) {
-        if (num === 0) return '0';
-        
-        const absNum = Math.abs(num);
-        
-        // Handle values less than 1 (including decimals like 0.5)
-        if (absNum < 1) {
-            return num.toFixed(decimals);
-        }
-        
-        const suffixes = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc'];
-        const tier = Math.floor(Math.log10(absNum) / 3);
-        
-        if (tier === 0) {
-            return num.toFixed(decimals);
-        }
-        
-        if (tier >= suffixes.length) {
-            return num.toExponential(2);
-        }
-        
-        const scaled = num / Math.pow(10, tier * 3);
-        return scaled.toFixed(decimals) + suffixes[tier];
-    }
-
-    /**
-     * Formats seconds into a human-readable time string.
-     * @param {number} seconds - Time in seconds
-     * @returns {string} Formatted time string
-     */
-    function formatTime(seconds) {
-        if (seconds < 60) {
-            return `${seconds.toFixed(1)}s`;
-        } else if (seconds < 3600) {
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-        } else if (seconds < 86400) {
-            const hours = Math.floor(seconds / 3600);
-            const mins = Math.floor((seconds % 3600) / 60);
-            return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-        } else {
-            const days = Math.floor(seconds / 86400);
-            const hours = Math.floor((seconds % 86400) / 3600);
-            return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-        }
-    }
 
     /**
      * Updates the results display with simulation data.
@@ -966,21 +912,6 @@
         dom.formula.value = formula;
         dom.formulaDropdown.classList.remove('show');
         showToast('Formula loaded');
-    }
-
-    /**
-     * Shows a toast notification.
-     * @param {string} message - Message to display
-     * @param {boolean} isError - Whether this is an error message
-     */
-    function showToast(message, isError = false) {
-        dom.toast.textContent = message;
-        dom.toast.classList.toggle('error', isError);
-        dom.toast.classList.add('show');
-
-        setTimeout(() => {
-            dom.toast.classList.remove('show');
-        }, 3000);
     }
 
     // ==========================================================================
