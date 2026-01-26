@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Progress Simulator - Belforge</title>
+    <meta name="description" content="Free browser-based offline progress calculator for idle/incremental game developers. Simulate resource accumulation, test production formulas, and balance offline progression systems.">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../css/styles.css">
+    <style>
+        /* Tool-specific styles */
+        .simulator-grid {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .simulator-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Formula input with syntax highlighting hint */
+        .formula-input {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            padding: 12px;
+            min-height: 60px;
+            resize: vertical;
+            text-align: left;
+        }
+
+        .formula-input.error {
+            border-color: var(--error);
+            background: rgba(247, 37, 133, 0.1);
+        }
+
+        .formula-error {
+            display: none;
+            color: var(--error);
+            font-size: 10px;
+            margin-top: 4px;
+            padding: 6px 8px;
+            background: rgba(247, 37, 133, 0.1);
+            border-radius: 4px;
+            border-left: 2px solid var(--error);
+        }
+
+        .formula-error.show {
+            display: block;
+        }
+
+        .formula-hint {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            opacity: 0.7;
+        }
+
+        .formula-hint code {
+            background: var(--bg-dark);
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Time preset buttons */
+        .time-presets {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+        }
+
+        .time-preset-btn {
+            background: var(--bg-dark);
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 6px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .time-preset-btn:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .time-preset-btn.active {
+            background: var(--accent-glow);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Results panel */
+        .results-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            min-height: 600px;
+        }
+
+        .results-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .results-content {
+            flex: 1;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Summary cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .summary-card {
+            background: var(--bg-dark);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .summary-card.highlight {
+            border: 2px solid var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .summary-card.capped {
+            border: 2px solid var(--error);
+            background: rgba(247, 37, 133, 0.1);
+        }
+
+        .summary-value {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 4px;
+            word-break: break-all;
+        }
+
+        .summary-card.capped .summary-value {
+            color: var(--error);
+        }
+
+        .summary-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Chart container */
+        .chart-container {
+            flex: 1;
+            min-height: 300px;
+            background: var(--bg-dark);
+            border-radius: 8px;
+            padding: 16px;
+            position: relative;
+        }
+
+        .chart-empty {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        /* Tick log */
+        .tick-log-section {
+            display: none;
+        }
+
+        .tick-log-section.show {
+            display: block;
+        }
+
+        .tick-log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .tick-log-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .tick-log {
+            background: var(--bg-dark);
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+
+        .tick-log::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .tick-log::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .tick-log::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .tick-log-entry {
+            display: flex;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tick-log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .tick-log-entry.capped {
+            background: rgba(247, 37, 133, 0.1);
+        }
+
+        .tick-time {
+            color: var(--text-muted);
+            min-width: 80px;
+        }
+
+        .tick-production {
+            color: var(--text);
+            min-width: 100px;
+        }
+
+        .tick-total {
+            color: var(--accent);
+            flex: 1;
+            text-align: right;
+        }
+
+        .tick-log-entry.capped .tick-total {
+            color: var(--error);
+        }
+
+        /* Export buttons */
+        .export-row {
+            display: flex;
+            gap: 8px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .export-row .btn {
+            flex: 1;
+        }
+
+        /* Formula examples dropdown */
+        .formula-examples {
+            margin-top: 8px;
+        }
+
+        .formula-example-btn {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            color: var(--text-muted);
+            font-size: 9px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .formula-example-btn:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .formula-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            border: 2px solid var(--accent);
+            border-radius: 8px;
+            margin-top: 4px;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .formula-dropdown.show {
+            display: block;
+        }
+
+        .formula-dropdown-item {
+            padding: 10px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s ease;
+        }
+
+        .formula-dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .formula-dropdown-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .formula-dropdown-name {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 2px;
+        }
+
+        .formula-dropdown-formula {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--accent);
+        }
+
+        .formula-group {
+            position: relative;
+        }
+
+        /* Cap indicator on chart */
+        .cap-indicator {
+            position: absolute;
+            right: 24px;
+            top: 24px;
+            background: rgba(247, 37, 133, 0.2);
+            border: 1px solid var(--error);
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 10px;
+            color: var(--error);
+            display: none;
+        }
+
+        .cap-indicator.show {
+            display: block;
+        }
+
+        /* Formula examples row */
+        .formula-examples {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .formula-info-tooltip {
+            color: var(--text-muted);
+            font-size: 14px;
+            cursor: help;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+        }
+
+        .formula-info-tooltip:hover {
+            opacity: 1;
+            color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="../index.html" class="logo">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <span>Belforge</span>
+        </a>
+        <div class="nav-links">
+            <a href="../index.html">Home</a>
+            <a href="../tools.html" class="active">Tools</a>
+        </div>
+    </nav>
+
+    <div class="tool-header">
+        <h1 style="font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0;">Offline Progress Simulator</h1>
+        <p>Test and balance offline resource accumulation • Visualize production curves • Export results</p>
+    </div>
+
+    <div class="tool-container">
+        <div class="simulator-grid">
+            <!-- Controls Panel -->
+            <aside class="controls-panel">
+                <div class="controls-panel-header">
+                    <h2 class="panel-title">Configuration</h2>
+                </div>
+                
+                <div class="controls-panel-content">
+                    <!-- Production Formula -->
+                    <div class="control-group formula-group">
+                        <label class="control-label">Production Formula</label>
+                        <textarea class="num-input formula-input" id="formula" placeholder="base * 1.05 ** level">base * 1.05 ** level</textarea>
+                        <div class="formula-error" id="formulaError"></div>
+                        <div class="formula-hint">
+                            Use <code>**</code> or <code>pow(a, b)</code> for exponents. <code>^</code> won't work!
+                        </div>
+                        <div class="formula-examples">
+                            <button class="formula-example-btn" id="showExamples">📋 Load Example Formula</button>
+                            <span class="formula-info-tooltip" title="Available variables: base, level, time">ⓘ</span>
+                            <div class="formula-dropdown" id="formulaDropdown">
+                                <div class="formula-dropdown-item" data-formula="base * 1.05 ** level">
+                                    <div class="formula-dropdown-name">Exponential Growth (Common)</div>
+                                    <div class="formula-dropdown-formula">base * 1.05 ** level</div>
+                                </div>
+                                <div class="formula-dropdown-item" data-formula="base * level">
+                                    <div class="formula-dropdown-name">Linear Growth</div>
+                                    <div class="formula-dropdown-formula">base * level</div>
+                                </div>
+                                <div class="formula-dropdown-item" data-formula="base * level ** 2">
+                                    <div class="formula-dropdown-name">Polynomial (Quadratic)</div>
+                                    <div class="formula-dropdown-formula">base * level ** 2</div>
+                                </div>
+                                <div class="formula-dropdown-item" data-formula="base * log2(level + 1)">
+                                    <div class="formula-dropdown-name">Logarithmic (Diminishing)</div>
+                                    <div class="formula-dropdown-formula">base * log2(level + 1)</div>
+                                </div>
+                                <div class="formula-dropdown-item" data-formula="base * (1 + level * 0.1) * 1.02 ** level">
+                                    <div class="formula-dropdown-name">Hybrid (Linear + Exponential)</div>
+                                    <div class="formula-dropdown-formula">base * (1 + level * 0.1) * 1.02 ** level</div>
+                                </div>
+                                <div class="formula-dropdown-item" data-formula="base * 1.001 ** time">
+                                    <div class="formula-dropdown-name">Time-Based Growth</div>
+                                    <div class="formula-dropdown-formula">base * 1.001 ** time</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Base Production & Level -->
+                    <div class="control-group">
+                        <div class="input-row">
+                            <div class="input-group">
+                                <label class="input-group-label">Base Rate (/sec)</label>
+                                <input type="number" class="num-input" id="baseRate" value="10" min="0" step="0.1">
+                            </div>
+                            <div class="input-group">
+                                <label class="input-group-label">Level</label>
+                                <input type="number" class="num-input" id="level" value="1" min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Offline Cap -->
+                    <div class="control-group">
+                        <div class="input-group">
+                            <label class="input-group-label">Offline Cap (hours)</label>
+                            <input type="number" class="num-input" id="offlineCap" value="24" min="0" step="0.5">
+                        </div>
+                        <div class="formula-hint">Set to 0 for no cap</div>
+                    </div>
+
+                    <!-- Time Presets -->
+                    <div class="control-group">
+                        <label class="control-label">Simulate Duration</label>
+                        <div class="time-presets">
+                            <button class="time-preset-btn" data-hours="1">1 hour</button>
+                            <button class="time-preset-btn" data-hours="4">4 hours</button>
+                            <button class="time-preset-btn active" data-hours="8">8 hours</button>
+                            <button class="time-preset-btn" data-hours="12">12 hours</button>
+                            <button class="time-preset-btn" data-hours="24">1 day</button>
+                            <button class="time-preset-btn" data-hours="168">7 days</button>
+                        </div>
+                        <div class="input-row" style="margin-top: 8px;">
+                            <div class="input-group">
+                                <label class="input-group-label">Hours</label>
+                                <input type="number" class="num-input" id="customHours" value="8" min="0">
+                            </div>
+                            <div class="input-group">
+                                <label class="input-group-label">Minutes</label>
+                                <input type="number" class="num-input" id="customMinutes" value="0" min="0" max="59">
+                            </div>
+                        </div>
+                        <div class="formula-hint">Click preset or enter custom time above</div>
+                    </div>
+
+                    <!-- Tick Interval -->
+                    <div class="control-group">
+                        <div class="input-group">
+                            <label class="input-group-label">Tick Interval (seconds)</label>
+                            <input type="number" class="num-input" id="tickInterval" value="1" min="0.1" step="0.1">
+                        </div>
+                        <div class="formula-hint">How often production is calculated (affects log detail)</div>
+                    </div>
+
+                    <!-- Show Tick Log Toggle -->
+                    <div class="control-group">
+                        <div class="toggle-row">
+                            <input type="checkbox" class="toggle-checkbox" id="showTickLog">
+                            <label class="toggle-label" for="showTickLog">Show tick-by-tick breakdown</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="controls-panel-actions">
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="simulateBtn">Run Simulation</button>
+                        <button class="btn" id="resetBtn">Reset to Defaults</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Results Panel -->
+            <main class="results-panel">
+                <div class="results-header">
+                    <h2 class="panel-title">Results</h2>
+                </div>
+                <div class="results-content">
+                    <!-- Summary Cards -->
+                    <div class="summary-grid">
+                        <div class="summary-card highlight">
+                            <div class="summary-value" id="totalEarned">0</div>
+                            <div class="summary-label">Total Earned</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-value" id="productionRate">0</div>
+                            <div class="summary-label">Final Rate /sec</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-value" id="avgRate">0</div>
+                            <div class="summary-label">Avg Rate /sec</div>
+                        </div>
+                        <div class="summary-card" id="capCard" style="display: none;">
+                            <div class="summary-value" id="capReachedAt">--</div>
+                            <div class="summary-label">Cap Reached</div>
+                        </div>
+                        <div class="summary-card" id="efficiencyCard" style="display: none;">
+                            <div class="summary-value" id="capEfficiency">--</div>
+                            <div class="summary-label">Time Efficiency</div>
+                        </div>
+                    </div>
+
+                    <!-- Chart -->
+                    <div class="chart-container">
+                        <canvas id="progressChart"></canvas>
+                        <p class="chart-empty" id="chartEmpty">Run simulation to see results</p>
+                        <div class="cap-indicator" id="capIndicator">
+                            ⚠️ Cap reached at <span id="capTime">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Tick Log (optional) -->
+                    <div class="tick-log-section" id="tickLogSection">
+                        <div class="tick-log-header">
+                            <span class="tick-log-title">Tick Breakdown</span>
+                            <span style="font-size: 10px; color: var(--text-muted);" id="tickCount">0 ticks</span>
+                        </div>
+                        <div class="tick-log" id="tickLog">
+                            <!-- Entries will be populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Export -->
+                    <div class="export-row">
+                        <button class="btn" id="exportCsv" disabled>Export CSV</button>
+                        <button class="btn" id="copyResults" disabled>Copy Results</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <footer>
+        <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+    </footer>
+
+    <script src="../js/offline-progress-simulator.js"></script>
+</body>
+</html>
