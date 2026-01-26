@@ -191,12 +191,13 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 6px;
-            padding: 8px 10px;
+            padding: 10px 12px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
+            font-size: 13px;
             color: var(--text);
-            resize: none;
-            height: 36px;
+            resize: vertical;
+            min-height: 44px;
+            line-height: 1.4;
         }
 
         .curve-formula:focus {
@@ -382,6 +383,46 @@
             cursor: not-allowed;
         }
 
+        /* Chart controls */
+        .chart-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .view-mode-select {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .view-mode-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .toggle-label input[type="checkbox"] {
+            accent-color: var(--accent);
+        }
+
+        .toggle-label:hover {
+            color: var(--text);
+        }
+
         /* Data table */
         .data-table-section {
             margin-top: 20px;
@@ -508,12 +549,43 @@
 
         /* Stats summary */
         .stats-summary {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
             margin-top: 16px;
             padding-top: 16px;
             border-top: 1px solid var(--border);
+        }
+
+        .stats-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .stats-label {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .stats-curve-select {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .stats-curve-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
         }
 
         .stat-item {
@@ -537,6 +609,101 @@
             letter-spacing: 0.5px;
             margin-top: 2px;
         }
+
+        /* Reference lines section */
+        .ref-line-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .ref-line-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .ref-line-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .ref-line-input-group {
+            display: flex;
+            gap: 6px;
+        }
+
+        .ref-line-input {
+            width: 70px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text);
+        }
+
+        .ref-line-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .ref-line-add-btn {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .ref-line-add-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .ref-line-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .ref-line-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .ref-line-remove {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 0 2px;
+            font-size: 12px;
+            line-height: 1;
+            opacity: 0.6;
+            transition: all 0.2s ease;
+        }
+
+        .ref-line-remove:hover {
+            color: #ef476f;
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -554,8 +721,8 @@
     </nav>
 
     <div class="tool-header">
-        <h1 style="font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0;">Offline Progress Simulator</h1>
-        <p>Test and balance offline resource accumulation • Visualize production curves • Export results</p>
+        <h1 style="font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0;">Progression Curve Visualizer</h1>
+        <p>Compare scaling formulas • Visualize XP curves, damage, costs • Export results</p>
     </div>
 
     <main class="tool-container">
@@ -587,20 +754,20 @@
                 <select id="presetSelect" class="preset-select">
                     <option value="">Select a preset...</option>
                     <optgroup label="Growth Curves">
-                        <option value="linear">Linear: base * level</option>
-                        <option value="exponential">Exponential: base * 1.1 ** level</option>
-                        <option value="polynomial">Polynomial: base * level ** 2</option>
-                        <option value="logarithmic">Logarithmic: base * log2(level + 1)</option>
+                        <option value="linear" title="Constant growth per level">Linear: base * level</option>
+                        <option value="exponential" title="Percentage growth compounds each level">Exponential: base * 1.1 ** level</option>
+                        <option value="polynomial" title="Quadratic growth curve">Polynomial: base * level ** 2</option>
+                        <option value="logarithmic" title="Fast early, slows down late">Logarithmic: base * log2(level + 1)</option>
                     </optgroup>
                     <optgroup label="Common Patterns">
-                        <option value="xp-curve">XP Curve: base * level ** 1.5</option>
-                        <option value="cost-scaling">Cost Scaling: base * 1.15 ** level</option>
-                        <option value="diminishing">Diminishing: base * (1 - 0.99 ** level)</option>
-                        <option value="soft-cap">Soft Cap: base * level / (level + 50) * 100</option>
+                        <option value="xp-curve" title="Classic RPG leveling pattern">XP Curve: base * level ** 1.5</option>
+                        <option value="cost-scaling" title="Idle game upgrade costs">Cost Scaling: base * 1.15 ** level</option>
+                        <option value="diminishing" title="Approaches cap asymptotically">Diminishing: base * (1 - 0.99 ** level)</option>
+                        <option value="soft-cap" title="Hyperbolic growth with soft ceiling">Soft Cap: base * level / (level + 50) * 100</option>
                     </optgroup>
                     <optgroup label="S-Curves">
-                        <option value="sigmoid">Sigmoid: base * 100 / (1 + 99 * 0.9 ** level)</option>
-                        <option value="smoothstep">Smoothstep: base * (3 * (level/100)**2 - 2 * (level/100)**3) * 100</option>
+                        <option value="sigmoid" title="S-curve: slow start, fast middle, plateaus">Sigmoid: base * 100 / (1 + 99 * 0.9 ** level)</option>
+                        <option value="smoothstep" title="Smooth 0-1 transition curve">Smoothstep: base * (3 * (level/100)**2 - 2 * (level/100)**3) * 100</option>
                     </optgroup>
                 </select>
             </div>
@@ -627,10 +794,20 @@
         <div class="panel chart-panel">
             <div class="panel-header">
                 <h2 class="panel-title">Visualization</h2>
-                <div class="export-buttons">
-                    <button class="export-btn" id="exportCsvBtn" disabled>CSV</button>
-                    <button class="export-btn" id="exportJsonBtn" disabled>JSON</button>
-                    <button class="export-btn" id="exportPngBtn" disabled>PNG</button>
+                <div class="chart-controls">
+                    <select id="viewModeSelect" class="view-mode-select">
+                        <option value="absolute">Absolute Values</option>
+                        <option value="growth">Growth Rate (×)</option>
+                    </select>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="logScaleToggle">
+                        <span>Log Scale</span>
+                    </label>
+                    <div class="export-buttons">
+                        <button class="export-btn" id="exportCsvBtn" disabled>CSV</button>
+                        <button class="export-btn" id="exportJsonBtn" disabled>JSON</button>
+                        <button class="export-btn" id="exportPngBtn" disabled>PNG</button>
+                    </div>
                 </div>
             </div>
 
@@ -644,18 +821,36 @@
 
             <!-- Stats Summary -->
             <div class="stats-summary" id="statsSummary" style="display: none;">
-                <div class="stat-item">
-                    <div class="stat-value" id="statMinValue">-</div>
-                    <div class="stat-label">Min Value</div>
+                <div class="stats-header">
+                    <span class="stats-label">Stats for:</span>
+                    <select id="statsCurveSelect" class="stats-curve-select"></select>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="statMaxValue">-</div>
-                    <div class="stat-label">Max Value</div>
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <div class="stat-value" id="statMinValue">-</div>
+                        <div class="stat-label">Min Value</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="statMaxValue">-</div>
+                        <div class="stat-label">Max Value</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="statGrowthFactor">-</div>
+                        <div class="stat-label">Max / Start</div>
+                    </div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="statGrowthFactor">-</div>
-                    <div class="stat-label">Growth Factor</div>
+            </div>
+
+            <!-- Reference Lines (Growth mode only) -->
+            <div class="ref-line-section" id="refLineSection" style="display: none;">
+                <div class="ref-line-header">
+                    <span class="ref-line-label">Reference Lines</span>
+                    <div class="ref-line-input-group">
+                        <input type="number" id="refLineInput" class="ref-line-input" placeholder="1.10" step="0.01" min="0">
+                        <button class="ref-line-add-btn" id="refLineAddBtn">+ Add</button>
+                    </div>
                 </div>
+                <div class="ref-line-list" id="refLineList"></div>
             </div>
 
             <!-- Data Table -->
