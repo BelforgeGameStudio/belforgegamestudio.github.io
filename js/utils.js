@@ -34,6 +34,383 @@ const BelforgeUtils = (function() {
     }
 
     // ==========================================================================
+    // Color Utilities
+    // ==========================================================================
+
+    /**
+     * Converts a hex color to rgba with specified alpha.
+     * Safely handles various color formats.
+     * 
+     * @param {string} color - Hex color (e.g., '#e85d04') or rgb/rgba string
+     * @param {number} alpha - Alpha value 0-1
+     * @returns {string} RGBA color string
+     * 
+     * @example
+     * hexToRgba('#e85d04', 0.5)  // "rgba(232, 93, 4, 0.5)"
+     * hexToRgba('#f00', 0.8)     // "rgba(255, 0, 0, 0.8)"
+     */
+    function hexToRgba(color, alpha) {
+        // Default fallback
+        if (!color || typeof color !== 'string') {
+            return `rgba(128, 128, 128, ${alpha})`;
+        }
+        
+        // Handle hex colors
+        if (color.startsWith('#')) {
+            const hex = color.slice(1);
+            let r, g, b;
+            
+            if (hex.length === 3) {
+                r = parseInt(hex[0] + hex[0], 16);
+                g = parseInt(hex[1] + hex[1], 16);
+                b = parseInt(hex[2] + hex[2], 16);
+            } else if (hex.length === 6) {
+                r = parseInt(hex.slice(0, 2), 16);
+                g = parseInt(hex.slice(2, 4), 16);
+                b = parseInt(hex.slice(4, 6), 16);
+            } else {
+                return `rgba(128, 128, 128, ${alpha})`;
+            }
+            
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        
+        // Already rgb/rgba - just return with new alpha
+        if (color.startsWith('rgb')) {
+            const match = color.match(/[\d.]+/g);
+            if (match && match.length >= 3) {
+                return `rgba(${match[0]}, ${match[1]}, ${match[2]}, ${alpha})`;
+            }
+        }
+        
+        return `rgba(128, 128, 128, ${alpha})`;
+    }
+
+    // ==========================================================================
+    // Safe Math Parser
+    // ==========================================================================
+
+    /**
+     * Safe math expression parser.
+     * Uses a whitelist approach - only allows specific tokens and operations.
+     * No arbitrary code execution possible.
+     * 
+     * @example
+     * SafeMathParser.evaluate('base * 1.1 ** level', { base: 10, level: 5 })
+     * SafeMathParser.evaluate('sqrt(x) + pow(y, 2)', { x: 16, y: 3 })
+     */
+    const SafeMathParser = {
+        // Allowed Math functions
+        allowedFunctions: new Set([
+            'abs', 'ceil', 'floor', 'round', 'trunc',
+            'sqrt', 'cbrt', 'pow', 'exp', 'expm1',
+            'log', 'log2', 'log10', 'log1p',
+            'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
+            'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh',
+            'min', 'max', 'hypot', 'sign', 'clamp', 'lerp'
+        ]),
+
+        // Allowed constants
+        allowedConstants: {
+            'PI': Math.PI,
+            'E': Math.E,
+            'LN2': Math.LN2,
+            'LN10': Math.LN10,
+            'LOG2E': Math.LOG2E,
+            'LOG10E': Math.LOG10E,
+            'SQRT2': Math.SQRT2,
+            'SQRT1_2': Math.SQRT1_2
+        },
+
+        /**
+         * Tokenize the expression into tokens.
+         * @param {string} expr - Expression to tokenize
+         * @returns {Array} Array of tokens
+         */
+        tokenize(expr) {
+            const tokens = [];
+            let i = 0;
+            
+            while (i < expr.length) {
+                const char = expr[i];
+                
+                // Skip whitespace
+                if (/\s/.test(char)) {
+                    i++;
+                    continue;
+                }
+                
+                // Numbers (including decimals and scientific notation)
+                if (/[0-9.]/.test(char)) {
+                    let num = '';
+                    let hasDecimal = false;
+                    let hasExponent = false;
+                    
+                    while (i < expr.length) {
+                        const c = expr[i];
+                        
+                        if (/[0-9]/.test(c)) {
+                            num += c;
+                            i++;
+                        } else if (c === '.' && !hasDecimal && !hasExponent) {
+                            // Only one decimal point, and not after exponent
+                            hasDecimal = true;
+                            num += c;
+                            i++;
+                        } else if ((c === 'e' || c === 'E') && !hasExponent && num.length > 0) {
+                            // Exponent - must have digits before it
+                            hasExponent = true;
+                            num += c;
+                            i++;
+                            // Allow optional sign after exponent
+                            if (i < expr.length && (expr[i] === '+' || expr[i] === '-')) {
+                                num += expr[i];
+                                i++;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // Validate the number
+                    const parsed = parseFloat(num);
+                    if (isNaN(parsed)) {
+                        throw new Error(`Invalid number: ${num}`);
+                    }
+                    
+                    // Check for malformed patterns like "1e" or "1." at end
+                    if (/[eE][+-]?$/.test(num) || /\.$/.test(num)) {
+                        throw new Error(`Invalid number: ${num}`);
+                    }
+                    
+                    tokens.push({ type: 'number', value: parsed });
+                    continue;
+                }
+                
+                // Identifiers (variables, functions, Math.xxx)
+                if (/[a-zA-Z_]/.test(char)) {
+                    let ident = '';
+                    while (i < expr.length && /[a-zA-Z0-9_]/.test(expr[i])) {
+                        ident += expr[i++];
+                    }
+                    
+                    // Check for Math.xxx pattern
+                    if (ident === 'Math' && expr[i] === '.') {
+                        i++; // skip the dot
+                        let mathIdent = '';
+                        while (i < expr.length && /[a-zA-Z0-9_]/.test(expr[i])) {
+                            mathIdent += expr[i++];
+                        }
+                        ident = mathIdent; // Use just the function/constant name
+                    }
+                    
+                    tokens.push({ type: 'identifier', value: ident });
+                    continue;
+                }
+                
+                // ** exponent operator (check BEFORE single *)
+                if (char === '*' && expr[i + 1] === '*') {
+                    tokens.push({ type: 'operator', value: '**' });
+                    i += 2;
+                    continue;
+                }
+                
+                // Single-char operators
+                if ('+-*/%(),.'.includes(char)) {
+                    tokens.push({ type: 'operator', value: char });
+                    i++;
+                    continue;
+                }
+                
+                // Catch dangerous XOR operator
+                if (char === '^') {
+                    throw new Error('Use ** or pow(a, b) for exponents, not ^');
+                }
+                
+                throw new Error(`Unexpected character: ${char}`);
+            }
+            
+            return tokens;
+        },
+
+        /**
+         * Parse and evaluate an expression.
+         * @param {string} expr - Expression to evaluate
+         * @param {object} variables - Object containing variable values
+         * @returns {number} Result of the expression
+         */
+        evaluate(expr, variables) {
+            const self = this;
+            const tokens = this.tokenize(expr);
+            let pos = 0;
+
+            const peek = () => tokens[pos];
+            const consume = () => tokens[pos++];
+
+            // Recursive descent parser
+            const parseExpression = () => parseAddSub();
+
+            const parseAddSub = () => {
+                let left = parseMulDiv();
+                while (peek() && (peek().value === '+' || peek().value === '-')) {
+                    const op = consume().value;
+                    const right = parseMulDiv();
+                    left = op === '+' ? left + right : left - right;
+                }
+                return left;
+            };
+
+            const parseMulDiv = () => {
+                let left = parsePower();
+                while (peek() && (peek().value === '*' || peek().value === '/' || peek().value === '%')) {
+                    const op = consume().value;
+                    const right = parsePower();
+                    if (op === '*') left = left * right;
+                    else if (op === '/') left = left / right;
+                    else left = left % right;
+                }
+                return left;
+            };
+
+            const parsePower = () => {
+                let left = parseUnary();
+                if (peek() && peek().value === '**') {
+                    consume();
+                    const right = parsePower(); // Right associative
+                    left = Math.pow(left, right);
+                }
+                return left;
+            };
+
+            const parseUnary = () => {
+                if (peek() && (peek().value === '+' || peek().value === '-')) {
+                    const op = consume().value;
+                    const operand = parseUnary();
+                    return op === '-' ? -operand : operand;
+                }
+                return parsePrimary();
+            };
+
+            const parsePrimary = () => {
+                const token = peek();
+                
+                if (!token) {
+                    throw new Error('Unexpected end of expression');
+                }
+
+                // Number literal
+                if (token.type === 'number') {
+                    consume();
+                    return token.value;
+                }
+
+                // Parenthesized expression
+                if (token.value === '(') {
+                    consume(); // (
+                    const result = parseExpression();
+                    if (!peek() || peek().value !== ')') {
+                        throw new Error('Missing closing parenthesis');
+                    }
+                    consume(); // )
+                    return result;
+                }
+
+                // Identifier (variable, function, or constant)
+                if (token.type === 'identifier') {
+                    consume();
+                    const name = token.value;
+
+                    // Check if it's a function call
+                    if (peek() && peek().value === '(') {
+                        consume(); // (
+                        const args = [];
+                        
+                        if (peek() && peek().value !== ')') {
+                            args.push(parseExpression());
+                            while (peek() && peek().value === ',') {
+                                consume(); // ,
+                                args.push(parseExpression());
+                            }
+                        }
+                        
+                        if (!peek() || peek().value !== ')') {
+                            throw new Error('Missing closing parenthesis for function call');
+                        }
+                        consume(); // )
+
+                        // Validate and execute function
+                        if (!self.allowedFunctions.has(name)) {
+                            throw new Error(`Unknown or disallowed function: ${name}`);
+                        }
+                        
+                        // Special case for clamp (not in Math)
+                        if (name === 'clamp') {
+                            if (args.length !== 3) {
+                                throw new Error('clamp requires 3 arguments: clamp(value, min, max)');
+                            }
+                            return Math.min(Math.max(args[0], args[1]), args[2]);
+                        }
+                        
+                        // Special case for lerp (not in Math)
+                        if (name === 'lerp') {
+                            if (args.length !== 3) {
+                                throw new Error('lerp requires 3 arguments: lerp(a, b, t)');
+                            }
+                            return args[0] + (args[1] - args[0]) * args[2];
+                        }
+                        
+                        return Math[name](...args);
+                    }
+
+                    // Variable
+                    if (name in variables) {
+                        return variables[name];
+                    }
+
+                    // Math constant
+                    if (name in self.allowedConstants) {
+                        return self.allowedConstants[name];
+                    }
+
+                    throw new Error(`Unknown variable or constant: ${name}`);
+                }
+
+                throw new Error(`Unexpected token: ${token.value}`);
+            };
+
+            const result = parseExpression();
+            
+            if (pos < tokens.length) {
+                throw new Error(`Unexpected token: ${tokens[pos].value}`);
+            }
+
+            return result;
+        }
+    };
+
+    /**
+     * Safely evaluates a math expression with given variables.
+     * Wrapper around SafeMathParser.evaluate with validation.
+     * 
+     * @param {string} expr - The expression to evaluate
+     * @param {object} vars - Variables available to the expression
+     * @returns {number} The calculated value
+     * @throws {Error} If expression is invalid or returns non-finite value
+     * 
+     * @example
+     * safeEval('base * 1.1 ** level', { base: 10, level: 5 })  // 16.105...
+     */
+    function safeEval(expr, vars) {
+        const result = SafeMathParser.evaluate(expr, vars);
+        
+        if (typeof result !== 'number' || isNaN(result) || !isFinite(result)) {
+            throw new Error('Expression must return a valid number');
+        }
+        
+        return result;
+    }
+
+    // ==========================================================================
     // Number Formatting
     // ==========================================================================
 
@@ -314,6 +691,13 @@ const BelforgeUtils = (function() {
         $,
         escapeHtml,
         
+        // Colors
+        hexToRgba,
+        
+        // Math Parser
+        SafeMathParser,
+        safeEval,
+        
         // Numbers
         formatNumber,
         formatWithCommas,
@@ -345,4 +729,11 @@ if (typeof window !== 'undefined') {
     window.formatNumber = window.formatNumber || BelforgeUtils.formatNumber;
     window.formatTime = window.formatTime || BelforgeUtils.formatTime;
     window.escapeHtml = window.escapeHtml || BelforgeUtils.escapeHtml;
+    window.hexToRgba = window.hexToRgba || BelforgeUtils.hexToRgba;
+    window.SafeMathParser = window.SafeMathParser || BelforgeUtils.SafeMathParser;
+    window.safeEval = window.safeEval || BelforgeUtils.safeEval;
+    window.debounce = window.debounce || BelforgeUtils.debounce;
+    window.sanitizeFilename = window.sanitizeFilename || BelforgeUtils.sanitizeFilename;
+    window.copyToClipboard = window.copyToClipboard || BelforgeUtils.copyToClipboard;
+    window.downloadFile = window.downloadFile || BelforgeUtils.downloadFile;
 }
