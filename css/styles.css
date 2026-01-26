@@ -146,12 +146,9 @@ footer {
 }
 
 .tool-header p {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 20px;
-    font-weight: 600;
     color: var(--accent);
+    font-size: 16px;
 }
-
 /* ==========================================================================
    5. Section Styles
    ========================================================================== */
@@ -1821,10 +1818,6 @@ section {
 
     .tool-header {
         padding: 75px 20px 20px;
-    }
-
-    .tool-header p {
-        font-size: 18px;
     }
 
     .tool-container {
