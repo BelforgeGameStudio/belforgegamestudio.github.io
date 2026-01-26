@@ -1,0 +1,1003 @@
+/* ==========================================================================
+   Belforge Tools - Shared Styles
+   Extends styles.css with common patterns across browser-based tools
+   ========================================================================== */
+
+/* ==========================================================================
+   1. Chart & Visualization Containers
+   ========================================================================== */
+
+.chart-container {
+    flex: 1;
+    min-height: 300px;
+    background: var(--bg-dark);
+    border-radius: 8px;
+    padding: 16px;
+    position: relative;
+}
+
+.chart-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.chart-empty {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.chart-empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+/* ==========================================================================
+   2. Formula Inputs & Code-style Textareas
+   ========================================================================== */
+
+.formula-input {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    padding: 12px;
+    min-height: 60px;
+    resize: vertical;
+    text-align: left;
+}
+
+.formula-input.error {
+    border-color: var(--error);
+    background: rgba(247, 37, 133, 0.1);
+}
+
+.formula-error {
+    display: none;
+    color: var(--error);
+    font-size: 10px;
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: rgba(247, 37, 133, 0.1);
+    border-radius: 4px;
+    border-left: 2px solid var(--error);
+}
+
+.formula-error.show {
+    display: block;
+}
+
+.formula-hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    opacity: 0.7;
+}
+
+.formula-hint code {
+    background: var(--bg-dark);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Larger formula hint variant (with background) */
+.formula-hint--block {
+    padding: 8px;
+    background: var(--bg-dark);
+    border-radius: 6px;
+    opacity: 1;
+}
+
+.formula-hint--block code {
+    background: var(--bg-card);
+}
+
+/* ==========================================================================
+   3. Formula Dropdown / Examples
+   ========================================================================== */
+
+.formula-group {
+    position: relative;
+}
+
+.formula-examples {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.formula-example-btn {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: var(--text-muted);
+    font-size: 9px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.formula-example-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.formula-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    margin-top: 4px;
+    z-index: 100;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.formula-dropdown.show {
+    display: block;
+}
+
+.formula-dropdown-item {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.2s ease;
+}
+
+.formula-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.formula-dropdown-item:hover {
+    background: var(--bg-hover);
+}
+
+.formula-dropdown-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+}
+
+.formula-dropdown-formula {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+}
+
+.formula-info-tooltip {
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: help;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.formula-info-tooltip:hover {
+    opacity: 1;
+    color: var(--accent);
+}
+
+/* ==========================================================================
+   4. Results Panel
+   ========================================================================== */
+
+.results-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 600px;
+}
+
+.results-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.results-content {
+    flex: 1;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* ==========================================================================
+   5. Summary Cards
+   ========================================================================== */
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.summary-card {
+    background: var(--bg-dark);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+}
+
+.summary-card.highlight {
+    border: 2px solid var(--accent);
+    background: var(--accent-glow);
+}
+
+.summary-card.capped {
+    border: 2px solid var(--error);
+    background: rgba(247, 37, 133, 0.1);
+}
+
+.summary-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
+.summary-card.capped .summary-value {
+    color: var(--error);
+}
+
+.summary-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* ==========================================================================
+   6. Time Preset Buttons
+   ========================================================================== */
+
+.time-presets {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.time-preset-btn {
+    background: var(--bg-dark);
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 6px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.time-preset-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.time-preset-btn.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ==========================================================================
+   7. Tick/Data Log
+   ========================================================================== */
+
+.tick-log-section {
+    display: none;
+}
+
+.tick-log-section.show {
+    display: block;
+}
+
+.tick-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.tick-log-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.tick-log {
+    background: var(--bg-dark);
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.tick-log::-webkit-scrollbar {
+    width: 6px;
+}
+
+.tick-log::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.tick-log::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.tick-log-entry {
+    display: flex;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.tick-log-entry:last-child {
+    border-bottom: none;
+}
+
+.tick-log-entry.capped {
+    background: rgba(247, 37, 133, 0.1);
+}
+
+.tick-time {
+    color: var(--text-muted);
+    min-width: 80px;
+}
+
+.tick-production {
+    color: var(--text);
+    min-width: 100px;
+}
+
+.tick-total {
+    color: var(--accent);
+    flex: 1;
+    text-align: right;
+}
+
+.tick-log-entry.capped .tick-total {
+    color: var(--error);
+}
+
+/* ==========================================================================
+   8. Export Row
+   ========================================================================== */
+
+.export-row {
+    display: flex;
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.export-row .btn {
+    flex: 1;
+}
+
+/* ==========================================================================
+   9. Cap/Warning Indicators
+   ========================================================================== */
+
+.cap-indicator {
+    position: absolute;
+    right: 24px;
+    top: 24px;
+    background: rgba(247, 37, 133, 0.2);
+    border: 1px solid var(--error);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 10px;
+    color: var(--error);
+    display: none;
+}
+
+.cap-indicator.show {
+    display: block;
+}
+
+/* ==========================================================================
+   10. Data Tables
+   ========================================================================== */
+
+.data-table-section {
+    margin-top: 20px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+}
+
+.data-table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.data-table-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.data-table-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.data-table-toggle:hover {
+    color: var(--accent);
+}
+
+.data-table-container {
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--bg-dark);
+    border-radius: 6px;
+    display: none;
+}
+
+.data-table-container.show {
+    display: block;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+}
+
+.data-table th,
+.data-table td {
+    padding: 6px 10px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+}
+
+.data-table th {
+    background: var(--bg-card);
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: sticky;
+    top: 0;
+}
+
+.data-table th:first-child,
+.data-table td:first-child {
+    text-align: left;
+}
+
+.data-table tr:hover td {
+    background: rgba(232, 93, 4, 0.05);
+}
+
+/* ==========================================================================
+   11. Panel Styling (Generic)
+   ========================================================================== */
+
+.panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Chart panel variant */
+.chart-panel {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ==========================================================================
+   12. Shared Settings Row
+   ========================================================================== */
+
+.shared-settings {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.setting-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.setting-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.setting-input {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    width: 100%;
+}
+
+.setting-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* ==========================================================================
+   13. Curve/Item Lists
+   ========================================================================== */
+
+.curve-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.curve-item {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    transition: border-color 0.2s ease;
+}
+
+.curve-item:hover {
+    border-color: var(--border-light, #3a3a3e);
+}
+
+.curve-item.disabled {
+    opacity: 0.5;
+}
+
+.curve-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.curve-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.curve-name {
+    flex: 1;
+    background: transparent;
+    border: none;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.curve-name:hover {
+    background: var(--bg-card);
+}
+
+.curve-name:focus {
+    outline: none;
+    background: var(--bg-card);
+}
+
+.curve-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.curve-action-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.curve-action-btn:hover {
+    background: var(--bg-card);
+    color: var(--text);
+}
+
+.curve-action-btn.visibility.hidden {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.curve-action-btn.delete:hover {
+    color: var(--error);
+}
+
+.curve-formula {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    resize: vertical;
+    min-height: 44px;
+    line-height: 1.4;
+}
+
+.curve-formula:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.curve-formula.error {
+    border-color: var(--error);
+}
+
+.curve-error {
+    font-size: 11px;
+    color: var(--error);
+    margin-top: 4px;
+    display: none;
+}
+
+.curve-error.show {
+    display: block;
+}
+
+/* Add curve button */
+.add-curve-btn {
+    width: 100%;
+    background: var(--bg-dark);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    color: var(--text-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.add-curve-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(232, 93, 4, 0.05);
+}
+
+.add-curve-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ==========================================================================
+   14. Preset Selectors
+   ========================================================================== */
+
+.preset-section {
+    margin-bottom: 16px;
+}
+
+.preset-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.preset-select {
+    width: 100%;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.preset-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* ==========================================================================
+   15. Chart Controls
+   ========================================================================== */
+
+.chart-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.view-mode-select {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.view-mode-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Override for chart controls toggle */
+.chart-controls .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.chart-controls .toggle-label input[type="checkbox"] {
+    accent-color: var(--accent);
+}
+
+.chart-controls .toggle-label:hover {
+    color: var(--text);
+}
+
+/* Export buttons in chart header */
+.export-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.export-btn {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.export-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.export-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ==========================================================================
+   16. Stats Summary
+   ========================================================================== */
+
+.stats-summary {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.stats-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.stats-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.stats-curve-select {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.stats-curve-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.stat-item {
+    background: var(--bg-dark);
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+}
+
+/* ==========================================================================
+   17. Reference Lines
+   ========================================================================== */
+
+.ref-line-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.ref-line-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.ref-line-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ref-line-input-group {
+    display: flex;
+    gap: 6px;
+}
+
+.ref-line-input {
+    width: 70px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+}
+
+.ref-line-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.ref-line-add-btn {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ref-line-add-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.ref-line-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ref-line-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.ref-line-remove {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+}
+
+.ref-line-remove:hover {
+    color: var(--error);
+    opacity: 1;
+}
+
+/* ==========================================================================
+   18. Tool-Specific Grid Layouts
+   ========================================================================== */
+
+/* Two-column tool layout (sidebar + main) */
+.simulator-grid {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 24px;
+}
+
+@media (max-width: 900px) {
+    .simulator-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .shared-settings {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .shared-settings {
+        grid-template-columns: 1fr;
+    }
+}

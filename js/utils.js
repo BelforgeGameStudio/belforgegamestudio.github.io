@@ -724,6 +724,10 @@ const BelforgeUtils = (function() {
 // Also expose individual functions globally for convenience
 // (allows either BelforgeUtils.showToast() or just showToast())
 if (typeof window !== 'undefined') {
+    // Expose the full module for console/debugging
+    window.BelforgeUtils = window.BelforgeUtils || BelforgeUtils;
+    
+    // Individual functions for direct use
     window.$ = window.$ || BelforgeUtils.$;
     window.showToast = window.showToast || BelforgeUtils.showToast;
     window.formatNumber = window.formatNumber || BelforgeUtils.formatNumber;
