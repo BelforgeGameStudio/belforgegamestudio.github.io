@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprite Sheet & Tileset Toolkit - Belforge</title>
+    <meta name="description" content="Free browser-based sprite sheet and tileset toolkit. Slice sprite sheets and tilesets, pack atlases, preview animations, and export to Unity, Godot, or PNG sequences. Auto-detection with confidence scoring.">
+    <script src="/js/gif.js"></script>
+    <script src="/js/utils.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/tools-common.css">
+</head>
+<body>
+    <!-- HEADER -->
+
+    <div class="tool-header">
+        <h1 style="font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0;">Sprite Sheet & Tileset Toolkit</h1>
+        <p class="">Slice sprite sheets & tilesets • Pack atlases • Preview animations • Export to Unity/Godot</p>
+    </div>
+
+    <div class="tool-container">
+        <div class="tool-grid">
+            <aside class="controls-panel">
+                <div class="controls-panel-header">
+                    <h2 class="panel-title">Configuration</h2>
+                </div>
+                
+                <div class="controls-panel-content">
+                <div class="control-group">
+                    <label class="control-label">Tile Size</label>
+                    <div class="tile-size-options">
+                        <button class="tile-size-btn" data-size="16" title="16×16 pixels per sprite">16</button>
+                        <button class="tile-size-btn active" data-size="32" title="32×32 pixels per sprite">32</button>
+                        <button class="tile-size-btn" data-size="64" title="64×64 pixels per sprite">64</button>
+                        <button class="tile-size-btn" data-size="128" title="128×128 pixels per sprite">128</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label class="input-group-label">Max Cols</label>
+                            <input type="number" class="num-input" id="maxCols" value="8" min="1" max="128">
+                        </div>
+                        <div class="input-group">
+                            <label class="input-group-label">Padding</label>
+                            <input type="number" class="num-input" id="padding" value="0" min="0" max="16">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="input-group">
+                        <label class="input-group-label">Sheet Name</label>
+                        <input type="text" class="num-input" id="sheetName" value="spritesheet-32x32" placeholder="spritesheet" style="text-align:left;padding-left:12px;">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="toggle-row">
+                        <input type="checkbox" class="toggle-checkbox" id="autofitToggle" checked>
+                        <label class="toggle-label" for="autofitToggle">Auto-fit sprites to tile</label>
+                    </div>
+                    <div class="toggle-row">
+                        <input type="checkbox" class="toggle-checkbox" id="extrudeToggle">
+                        <label class="toggle-label" for="extrudeToggle">Extrude edges (anti-bleed)</label>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Sort Sprites</label>
+                    <div class="sort-controls">
+                        <button class="sort-btn" data-sort="name-asc" title="Sort alphabetically A to Z">A→Z</button>
+                        <button class="sort-btn" data-sort="name-desc" title="Sort alphabetically Z to A">Z→A</button>
+                        <button class="sort-btn" data-sort="natural" title="Sort with numbers in order (e.g. sprite_2 before sprite_10)">Natural</button>
+                        <button class="sort-btn" data-sort="reverse" title="Reverse current order">Reverse</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="tool-btn-row">
+                        <button class="btn" id="snapPot" title="Adjust columns so sheet width is 64, 128, 256, 512... px (required by some game engines)">Snap to Power-of-Two</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-value" id="spriteCount">0</div>
+                        <div class="stat-label">Sprites</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="rowCount">0</div>
+                        <div class="stat-label">Rows</div>
+                    </div>
+                </div>
+
+                <div class="warning-box" id="sizeWarning">
+                    <div class="warning-header">
+                        <span class="warning-icon">⚠️</span>
+                        <span class="warning-title">Size Mismatch</span>
+                    </div>
+                    <p class="warning-text"><span class="warning-value" id="mismatchCount">0</span> sprite(s) not <span id="expectedSize">32×32</span></p>
+                </div>
+
+                <div class="warning-box" id="gpuWarning">
+                    <div class="warning-header">
+                        <span class="warning-icon">⚠️</span>
+                        <span class="warning-title">Large Texture</span>
+                    </div>
+                    <p class="warning-text">Sheet exceeds <span class="warning-value" id="gpuLimit">8192</span>px</p>
+                </div>
+                </div>
+
+                <div class="controls-panel-actions">
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="generateBtn" disabled>Generate Sheet</button>
+                        <div class="tool-btn-row">
+                            <button class="btn" id="downloadPng" title="Download your spritesheet as a PNG file" disabled>Download<br>PNG</button>
+                            <button class="btn" id="downloadJson" title="Download your spritesheet as a JSON file" disabled>Download<br>JSON</button>
+                        </div>
+                        <div class="export-format-row">
+                            <label class="export-format-label">Format:</label>
+                            <select class="export-format-select" id="exportFormat" title="Export format">
+                                <option value="unity">Unity</option>
+                                <option value="godot">Godot</option>
+                                <option value="aseprite-hash">Aseprite (Hash)</option>
+                                <option value="aseprite-array">Aseprite (Array)</option>
+                                <option value="texturepacker">TexturePacker</option>
+                            </select>
+                        </div>
+                        <button class="btn" id="clearBtn">Clear All</button>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="content-area">
+                <div class="drop-zone" id="dropZone">
+                    <div class="drop-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5">
+                            <path d="M12 16V4m0 0L8 8m4-4l4 4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M3 15v4a2 2 0 002 2h14a2 2 0 002-2v-4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <p class="drop-text">Drop PNG sprites or sprite sheets here</p>
+                    <p class="drop-hint">or click to browse • sheets will auto-detect</p>
+                    <input type="file" id="fileInput" accept="image/png" multiple hidden>
+                </div>
+
+                <section class="sprites-section">
+                    <div class="section-header">
+                        <h3 class="section-title">Loaded Sprites</h3>
+                        <div class="section-actions">
+                            <button class="btn btn-sm" id="undoBtn" disabled title="Undo (Ctrl+Z)">↶</button>
+                            <button class="btn btn-sm" id="redoBtn" disabled title="Redo (Ctrl+Shift+Z)">↷</button>
+                            <button class="btn btn-sm" id="insertEmptyBtn" title="Insert empty transparent sprite">+ Empty</button>
+                            <button class="btn btn-sm" id="batchRenameBtn" disabled title="Rename multiple sprites with a pattern">Rename…</button>
+                        </div>
+                    </div>
+                    <div class="sprites-grid" id="spritesGrid">
+                        <div class="empty-state">No sprites loaded</div>
+                    </div>
+                </section>
+
+                <section class="preview-section">
+                    <div class="section-header">
+                        <div class="preview-tabs">
+                            <button class="preview-tab active" id="tabSheet" title="Sheet Preview">Sheet</button>
+                            <button class="preview-tab" id="tabAnimation" title="Animation Preview">Animation</button>
+                        </div>
+                    </div>
+                    
+                    <div class="preview-tab-content active" id="sheetPreviewTab">
+                        <div class="preview-container" id="previewContainer">
+                            <canvas id="previewCanvas" style="display: none;"></canvas>
+                            <p class="preview-empty" id="previewEmpty">Generate to preview</p>
+                        </div>
+                        <div class="dimension-display" id="dimensionDisplay">
+                            <div class="dimension-item">
+                                <span>W:</span>
+                                <span class="dimension-value" id="sheetWidth">0</span>
+                                <span>px</span>
+                            </div>
+                            <div class="dimension-item">
+                                <span>H:</span>
+                                <span class="dimension-value" id="sheetHeight">0</span>
+                                <span>px</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="preview-tab-content" id="animationPreviewTab">
+                        <div class="animation-preview-container">
+                            <canvas id="animationCanvas"></canvas>
+                            <p class="animation-empty" id="animationEmpty">Add sprites to preview</p>
+                        </div>
+                        <div class="animation-controls">
+                            <button class="btn btn-sm" id="animPrevFrame" title="Previous frame (←)">⏮</button>
+                            <button class="btn btn-sm" id="animPlayPause" title="Play/Pause (Space)">▶</button>
+                            <button class="btn btn-sm" id="animNextFrame" title="Next frame (→)">⏭</button>
+                            <span class="animation-frame-display">
+                                <span id="animCurrentFrame">0</span> / <span id="animTotalFrames">0</span>
+                            </span>
+                            <div class="animation-speed-control">
+                                <label class="animation-speed-label">FPS</label>
+                                <input type="number" class="num-input animation-fps-input" id="animFps" value="12" min="1" max="60">
+                            </div>
+                        </div>
+                        <p class="animation-hint">Space to play/pause • ←→ to step frames</p>
+                        <div class="animation-export-row">
+                            <button class="btn btn-sm" id="exportGifBtn" disabled title="Export animation as animated GIF">Export GIF</button>
+                            <button class="btn btn-sm" id="exportWebpBtn" disabled title="Export animation as animated WebP">Export WebP</button>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Import Sprite Sheet Modal -->
+    <div class="modal-overlay" id="importModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Import Sprite Sheet</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="import-mode-tabs">
+                    <button class="import-mode-tab active" data-mode="slice">Slice into Sprites</button>
+                    <button class="import-mode-tab" data-mode="single">Add as Single Image</button>
+                </div>
+                
+                <div id="sliceMode">
+                    <div class="modal-preview-container">
+                        <div class="sheet-preview-wrap">
+                            <canvas id="sheetPreviewCanvas"></canvas>
+                        </div>
+                        <div class="slice-config">
+                            <button class="btn btn-tool" id="autoDetectBtn" style="margin-bottom: 8px;">✨ Auto-detect Grid</button>
+                            <div id="detectResult" class="slice-info" style="display: none; margin-bottom: 8px;">
+                                <div class="slice-info-row">
+                                    <span>Detected:</span>
+                                    <span class="slice-info-value" id="detectResultText">--</span>
+                                </div>
+                                <div class="slice-info-row">
+                                    <span>Confidence:</span>
+                                    <span class="slice-info-value" id="detectConfidence">--</span>
+                                </div>
+                            </div>
+                            <div class="slice-info">
+                                <div class="slice-info-row">
+                                    <span>Image Size:</span>
+                                    <span class="slice-info-value" id="importImgSize">0×0</span>
+                                </div>
+                                <div class="slice-info-row">
+                                    <span>Slice Size:</span>
+                                    <span class="slice-info-value" id="importSliceSize">32×32</span>
+                                </div>
+                                <div class="slice-info-row">
+                                    <span>Grid:</span>
+                                    <span class="slice-info-value" id="importGridSize">0×0</span>
+                                </div>
+                                <div class="slice-info-row">
+                                    <span>Tiles to Scan:</span>
+                                    <span class="slice-info-value" id="importSpriteCount">0</span>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <div class="input-row">
+                                    <div class="input-group">
+                                        <label class="input-group-label">Slice Width</label>
+                                        <input type="number" class="num-input" id="sliceWidth" value="32" min="1" max="1024">
+                                    </div>
+                                    <div class="input-group">
+                                        <label class="input-group-label">Slice Height</label>
+                                        <input type="number" class="num-input" id="sliceHeight" value="32" min="1" max="1024">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <div class="input-row">
+                                    <div class="input-group">
+                                        <label class="input-group-label">Spacing X</label>
+                                        <input type="number" class="num-input" id="sliceSpacingX" value="0" min="0" max="64">
+                                    </div>
+                                    <div class="input-group">
+                                        <label class="input-group-label">Spacing Y</label>
+                                        <input type="number" class="num-input" id="sliceSpacingY" value="0" min="0" max="64">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <div class="input-row">
+                                    <div class="input-group">
+                                        <label class="input-group-label">Offset X</label>
+                                        <input type="number" class="num-input" id="sliceOffsetX" value="0" min="0" max="256">
+                                    </div>
+                                    <div class="input-group">
+                                        <label class="input-group-label">Offset Y</label>
+                                        <input type="number" class="num-input" id="sliceOffsetY" value="0" min="0" max="256">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="toggle-row">
+                                <input type="checkbox" class="toggle-checkbox" id="skipEmpty" checked>
+                                <label class="toggle-label" for="skipEmpty">Skip empty/transparent tiles</label>
+                            </div>
+                            <p id="skipEmptyHint" style="font-size: 9px; color: var(--text-muted); opacity: 0.6; margin-top: -4px;">Empty tiles will be excluded from import</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="singleMode" style="display: none;">
+                    <div class="sheet-preview-wrap" style="max-width: 300px; margin: 0 auto;">
+                        <canvas id="singlePreviewCanvas"></canvas>
+                    </div>
+                    <div class="slice-info" style="margin-top: 16px;">
+                        <div class="slice-info-row">
+                            <span>Image Size:</span>
+                            <span class="slice-info-value" id="singleImgSize">0×0</span>
+                        </div>
+                        <p style="margin-top: 8px; font-size: 10px; opacity: 0.7;">Image will be added as a single sprite. Use auto-fit option to scale if needed.</p>
+                    </div>
+                </div>
+
+                <div class="insert-position-group">
+                    <label class="control-label">Insert Position</label>
+                    <div class="insert-position-options">
+                        <button class="insert-pos-btn active" data-pos="end">End</button>
+                        <button class="insert-pos-btn" data-pos="start">Start</button>
+                        <button class="insert-pos-btn" data-pos="index">At Index</button>
+                    </div>
+                    <div class="insert-index-input" id="insertIndexWrap">
+                        <input type="number" class="num-input" id="insertIndex" value="0" min="0" style="width: 100px;">
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn" id="cancelImport">Cancel</button>
+                    <button class="btn btn-primary" id="confirmImport">Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch Rename Modal -->
+    <div class="modal-overlay" id="renameModal">
+        <div class="modal" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Batch Rename Sprites</h3>
+                <button class="modal-close" id="renameModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="rename-mode-tabs">
+                    <button class="rename-mode-tab active" data-mode="pattern" title="Use a pattern with ### for numbers">Pattern</button>
+                    <button class="rename-mode-tab" data-mode="prefix" title="Add text before existing names">Add Prefix</button>
+                    <button class="rename-mode-tab" data-mode="suffix" title="Add text after existing names">Add Suffix</button>
+                    <button class="rename-mode-tab" data-mode="replace" title="Find and replace text in names">Find/Replace</button>
+                </div>
+                
+                <div id="patternMode" class="rename-mode-content">
+                    <div class="control-group">
+                        <label class="input-group-label">Pattern (### = number)</label>
+                        <input type="text" class="num-input" id="renamePattern" value="sprite_###" placeholder="walk_###" style="text-align:left;padding-left:12px;">
+                    </div>
+                    <div class="control-group">
+                        <div class="input-row">
+                            <div class="input-group">
+                                <label class="input-group-label">Start Number</label>
+                                <input type="number" class="num-input" id="renameStartNum" value="0" min="0">
+                            </div>
+                            <div class="input-group">
+                                <label class="input-group-label">Padding</label>
+                                <input type="number" class="num-input" id="renamePadding" value="3" min="1" max="6">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="prefixMode" class="rename-mode-content" style="display:none;">
+                    <div class="control-group">
+                        <label class="input-group-label">Prefix to Add</label>
+                        <input type="text" class="num-input" id="renamePrefix" value="" placeholder="player_" style="text-align:left;padding-left:12px;">
+                    </div>
+                </div>
+                
+                <div id="suffixMode" class="rename-mode-content" style="display:none;">
+                    <div class="control-group">
+                        <label class="input-group-label">Suffix to Add</label>
+                        <input type="text" class="num-input" id="renameSuffix" value="" placeholder="_idle" style="text-align:left;padding-left:12px;">
+                    </div>
+                </div>
+                
+                <div id="replaceMode" class="rename-mode-content" style="display:none;">
+                    <div class="control-group">
+                        <label class="input-group-label">Find</label>
+                        <input type="text" class="num-input" id="renameFind" value="" placeholder="old_name" style="text-align:left;padding-left:12px;">
+                    </div>
+                    <div class="control-group">
+                        <label class="input-group-label">Replace With</label>
+                        <input type="text" class="num-input" id="renameReplace" value="" placeholder="new_name" style="text-align:left;padding-left:12px;">
+                    </div>
+                </div>
+                
+                <div class="rename-preview">
+                    <div class="rename-preview-header">
+                        <span>Preview</span>
+                        <span id="renameAffectedCount">0 sprites affected</span>
+                    </div>
+                    <div class="rename-preview-list" id="renamePreviewList">
+                        <div class="empty-state" style="padding: 16px;">Select sprites to rename</div>
+                    </div>
+                </div>
+                
+                <div class="rename-scope-group">
+                    <label class="control-label">Apply To</label>
+                    <div class="rename-scope-options">
+                        <button class="rename-scope-btn active" data-scope="all" title="Rename all sprites">All Sprites</button>
+                        <button class="rename-scope-btn" data-scope="range" title="Rename a specific range">Range</button>
+                    </div>
+                    <div class="rename-range-inputs" id="renameRangeInputs">
+                        <div class="input-row">
+                            <div class="input-group">
+                                <label class="input-group-label">From Index</label>
+                                <input type="number" class="num-input" id="renameRangeStart" value="1" min="1">
+                            </div>
+                            <div class="input-group">
+                                <label class="input-group-label">To Index</label>
+                                <input type="number" class="num-input" id="renameRangeEnd" value="1" min="1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="btn" id="cancelRename">Cancel</button>
+                    <button class="btn btn-primary" id="confirmRename">Rename</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+
+    <script src="/js/gif.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/sprite-sheet-toolkit.js"></script>
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progression Curve Visualizer - Belforge</title>
+    <meta name="description" content="Free browser-based progression curve visualizer for game developers. Compare scaling formulas, visualize XP curves, damage scaling, and cost progression side by side.">
+    <script src="/js/chart.js"></script>
+    <script src="/js/utils.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/tools-common.css">
+    <style>
+        .tool-container {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .tool-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- HEADER -->
+
+    <div class="tool-header">
+        <h1 style="font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0;">Progression Curve Visualizer</h1>
+        <p>Compare scaling formulas • Visualize XP curves, damage, costs • Export results</p>
+    </div>
+
+    <main class="tool-container">
+        <div class="panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Curve Builder</h2>
+            </div>
+
+            <div class="shared-settings">
+                <div class="setting-group">
+                    <label class="setting-label">Base Value</label>
+                    <input type="number" id="baseValue" class="setting-input" value="10" min="0" step="1">
+                </div>
+                <div class="setting-group">
+                    <label class="setting-label">Min Level</label>
+                    <input type="number" id="minLevel" class="setting-input" value="1" min="0" step="1">
+                </div>
+                <div class="setting-group">
+                    <label class="setting-label">Max Level</label>
+                    <input type="number" id="maxLevel" class="setting-input" value="100" min="1" step="1">
+                </div>
+            </div>
+
+            <div class="preset-section">
+                <label class="preset-label">Add Preset Curve</label>
+                <select id="presetSelect" class="preset-select">
+                    <option value="">Select a preset...</option>
+                    <optgroup label="Growth Curves">
+                        <option value="linear" title="Constant growth per level">Linear: base * level</option>
+                        <option value="exponential" title="Percentage growth compounds each level">Exponential: base * 1.1 ** level</option>
+                        <option value="polynomial" title="Quadratic growth curve">Polynomial: base * level ** 2</option>
+                        <option value="logarithmic" title="Fast early, slows down late">Logarithmic: base * log2(level + 1)</option>
+                    </optgroup>
+                    <optgroup label="Common Patterns">
+                        <option value="xp-curve" title="Classic RPG leveling pattern">XP Curve: base * level ** 1.5</option>
+                        <option value="cost-scaling" title="Idle game upgrade costs">Cost Scaling: base * 1.15 ** level</option>
+                        <option value="diminishing" title="Approaches cap asymptotically">Diminishing: base * (1 - 0.99 ** level)</option>
+                        <option value="soft-cap" title="Hyperbolic growth with soft ceiling">Soft Cap: base * level / (level + 50) * 100</option>
+                    </optgroup>
+                    <optgroup label="S-Curves">
+                        <option value="sigmoid" title="S-curve: slow start, fast middle, plateaus">Sigmoid: base * 100 / (1 + 99 * 0.9 ** level)</option>
+                        <option value="smoothstep" title="Smooth 0-1 transition curve">Smoothstep: base * (3 * (level/100)**2 - 2 * (level/100)**3) * 100</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <div class="curve-list" id="curveList"></div>
+
+            <button class="add-curve-btn" id="addCurveBtn">+ Add Custom Curve</button>
+
+            <div class="formula-hint formula-hint--block">
+                Variables: <code>level</code>, <code>base</code><br>
+                Operators: <code>**</code> <code>+</code> <code>-</code> <code>*</code> <code>/</code> <code>%</code><br>
+                Functions: <code>pow</code> <code>sqrt</code> <code>log</code> <code>log2</code> <code>log10</code> <code>floor</code> <code>ceil</code> <code>round</code> <code>abs</code> <code>min</code> <code>max</code> <code>clamp</code> <code>lerp</code> <code>sin</code> <code>cos</code>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn" id="resetBtn">Reset All</button>
+            </div>
+        </div>
+
+        <div class="panel chart-panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Visualization</h2>
+                <div class="chart-controls">
+                    <select id="viewModeSelect" class="view-mode-select">
+                        <option value="absolute">Absolute Values</option>
+                        <option value="growth">Growth Rate (×)</option>
+                    </select>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="logScaleToggle">
+                        <span>Log Scale</span>
+                    </label>
+                    <div class="export-buttons">
+                        <button class="export-btn" id="exportCsvBtn" disabled>CSV</button>
+                        <button class="export-btn" id="exportJsonBtn" disabled>JSON</button>
+                        <button class="export-btn" id="exportPngBtn" disabled>PNG</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="curveChart"></canvas>
+                <div class="chart-empty" id="chartEmpty">
+                    <div class="chart-empty-icon">📈</div>
+                    <div>Add curves to visualize progression</div>
+                </div>
+            </div>
+
+            <div class="stats-summary" id="statsSummary" style="display: none;">
+                <div class="stats-header">
+                    <span class="stats-label">Stats for:</span>
+                    <select id="statsCurveSelect" class="stats-curve-select"></select>
+                </div>
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <div class="stat-value" id="statMinValue">-</div>
+                        <div class="stat-label">Min Value</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="statMaxValue">-</div>
+                        <div class="stat-label">Max Value</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="statGrowthFactor">-</div>
+                        <div class="stat-label">Max / Start</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ref-line-section" id="refLineSection" style="display: none;">
+                <div class="ref-line-header">
+                    <span class="ref-line-label">Reference Lines</span>
+                    <div class="ref-line-input-group">
+                        <input type="number" id="refLineInput" class="ref-line-input" placeholder="1.10" step="0.01" min="0">
+                        <button class="ref-line-add-btn" id="refLineAddBtn">+ Add</button>
+                    </div>
+                </div>
+                <div class="ref-line-list" id="refLineList"></div>
+            </div>
+
+            <div class="data-table-section">
+                <div class="data-table-header">
+                    <span class="data-table-title">Data Table</span>
+                    <button class="data-table-toggle" id="tableToggle">Show ▼</button>
+                </div>
+                <div class="data-table-container" id="tableContainer">
+                    <table class="data-table" id="dataTable">
+                        <thead>
+                            <tr id="tableHeader">
+                                <th>Level</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="toast" id="toast"></div>
+    
+    <!-- FOOTER -->
+
+    <script src="/js/chart.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/progression-curve-visualizer.js"></script>
+</body>
+</html>
