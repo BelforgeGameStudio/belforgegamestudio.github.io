@@ -5,16 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Progression Curve Visualizer - Belforge</title>
     <meta name="description" content="Free browser-based progression curve visualizer for game developers. Compare scaling formulas, visualize XP curves, damage scaling, and cost progression side by side.">
-    <script src="../js/chart.js"></script>
-    <script src="../js/utils.js"></script>
-    <link rel="icon" type="image/svg+xml" href="../favicon.svg" color="#3b82f6">
+    <script src="/js/chart.js"></script>
+    <script src="/js/utils.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../css/styles.css">
-    <link rel="stylesheet" href="../css/tools-common.css">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/tools-common.css">
     <style>
-        /* Tool-specific layout override */
         .tool-container {
             display: grid;
             grid-template-columns: 380px 1fr;
@@ -33,17 +32,29 @@
 </head>
 <body>
     <nav>
-        <a href="../index.html" class="logo">
-            <div class="logo-icon">
-                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            </div>
-            <span>Belforge</span>
-        </a>
-        <div class="nav-links">
-            <a href="../index.html">Home</a>
-            <a href="../tools.html" class="active">Tools</a>
+    <a href="/index.html" class="logo">
+        <div class="logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         </div>
-    </nav>
+        <span>Belforge</span>
+    </a>
+    <div class="nav-links">
+        <a href="/index.html" data-nav="home">Home</a>
+        <!--<a href="/games.html" data-nav="games">Games</a>-->
+        <a href="/tools.html" data-nav="tools">Tools</a>
+    </div>
+</nav>
+<script>
+(function() {
+    var path = window.location.pathname;
+    var nav = 'home';
+    if (path.includes('/tools')) nav = 'tools';
+    else if (path.includes('/games')) nav = 'games';
+    var el = document.querySelector('[data-nav="' + nav + '"]');
+    if (el) el.classList.add('active');
+})();
+</script>
+
 
     <div class="tool-header">
         <h1 style="font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0;">Progression Curve Visualizer</h1>
@@ -51,13 +62,11 @@
     </div>
 
     <main class="tool-container">
-        <!-- Input Panel -->
         <div class="panel">
             <div class="panel-header">
                 <h2 class="panel-title">Curve Builder</h2>
             </div>
 
-            <!-- Shared Settings -->
             <div class="shared-settings">
                 <div class="setting-group">
                     <label class="setting-label">Base Value</label>
@@ -73,7 +82,6 @@
                 </div>
             </div>
 
-            <!-- Preset Selector -->
             <div class="preset-section">
                 <label class="preset-label">Add Preset Curve</label>
                 <select id="presetSelect" class="preset-select">
@@ -97,10 +105,7 @@
                 </select>
             </div>
 
-            <!-- Curve List -->
-            <div class="curve-list" id="curveList">
-                <!-- Curves will be added dynamically -->
-            </div>
+            <div class="curve-list" id="curveList"></div>
 
             <button class="add-curve-btn" id="addCurveBtn">+ Add Custom Curve</button>
 
@@ -115,7 +120,6 @@
             </div>
         </div>
 
-        <!-- Chart Panel -->
         <div class="panel chart-panel">
             <div class="panel-header">
                 <h2 class="panel-title">Visualization</h2>
@@ -144,7 +148,6 @@
                 </div>
             </div>
 
-            <!-- Stats Summary -->
             <div class="stats-summary" id="statsSummary" style="display: none;">
                 <div class="stats-header">
                     <span class="stats-label">Stats for:</span>
@@ -166,7 +169,6 @@
                 </div>
             </div>
 
-            <!-- Reference Lines (Growth mode only) -->
             <div class="ref-line-section" id="refLineSection" style="display: none;">
                 <div class="ref-line-header">
                     <span class="ref-line-label">Reference Lines</span>
@@ -178,7 +180,6 @@
                 <div class="ref-line-list" id="refLineList"></div>
             </div>
 
-            <!-- Data Table -->
             <div class="data-table-section">
                 <div class="data-table-header">
                     <span class="data-table-title">Data Table</span>
@@ -202,11 +203,12 @@
     <div class="toast" id="toast"></div>
     
     <footer>
-        <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
-    </footer>
+    <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+</footer>
 
-    <script src="../js/chart.js"></script>
-    <script src="../js/utils.js"></script>
-    <script src="../js/progression-curve-visualizer.js"></script>
+
+    <script src="/js/chart.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/progression-curve-visualizer.js"></script>
 </body>
 </html>

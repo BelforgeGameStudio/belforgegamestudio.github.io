@@ -4,26 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Games - Belforge Game Studio</title>
-    <link rel="icon" type="image/svg+xml" href="../favicon.svg" color="#3b82f6">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
     <nav>
-        <a href="index.html" class="logo">
-            <div class="logo-icon">
-                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            </div>
-            <span>Belforge</span>
-        </a>
-        <div class="nav-links">
-            <a href="index.html">Home</a>
-            <a href="games.html" class="active">Games</a>
-            <a href="tools.html">Tools</a>
+    <a href="/index.html" class="logo">
+        <div class="logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         </div>
-    </nav>
+        <span>Belforge</span>
+    </a>
+    <div class="nav-links">
+        <a href="/index.html" data-nav="home">Home</a>
+        <!--<a href="/games.html" data-nav="games">Games</a>-->
+        <a href="/tools.html" data-nav="tools">Tools</a>
+    </div>
+</nav>
+<script>
+(function() {
+    var path = window.location.pathname;
+    var nav = 'home';
+    if (path.includes('/tools')) nav = 'tools';
+    else if (path.includes('/games')) nav = 'games';
+    var el = document.querySelector('[data-nav="' + nav + '"]');
+    if (el) el.classList.add('active');
+})();
+</script>
+
 
     <main>
         <div class="page-header">
@@ -68,7 +79,8 @@
     </main>
 
     <footer>
-        <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
-    </footer>
+    <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+</footer>
+
 </body>
 </html>

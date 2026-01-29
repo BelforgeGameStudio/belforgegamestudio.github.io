@@ -5,29 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sprite Sheet & Tileset Toolkit - Belforge</title>
     <meta name="description" content="Free browser-based sprite sheet and tileset toolkit. Slice sprite sheets and tilesets, pack atlases, preview animations, and export to Unity, Godot, or PNG sequences. Auto-detection with confidence scoring.">
-    <!-- GIF.js for client-side GIF encoding -->
-    <script src="../js/gif.js"></script>
-    <script src="../js/utils.js"></script>
-    <link rel="icon" type="image/svg+xml" href="../favicon.svg" color="#3b82f6">
+    <script src="/js/gif.js"></script>
+    <script src="/js/utils.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../css/styles.css">
-    <link rel="stylesheet" href="../css/tools-common.css">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/tools-common.css">
 </head>
 <body>
     <nav>
-        <a href="../index.html" class="logo">
-            <div class="logo-icon">
-                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            </div>
-            <span>Belforge</span>
-        </a>
-        <div class="nav-links">
-            <a href="../index.html">Home</a>
-            <a href="../tools.html" class="active">Tools</a>
+    <a href="/index.html" class="logo">
+        <div class="logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         </div>
-    </nav>
+        <span>Belforge</span>
+    </a>
+    <div class="nav-links">
+        <a href="/index.html" data-nav="home">Home</a>
+        <!--<a href="/games.html" data-nav="games">Games</a>-->
+        <a href="/tools.html" data-nav="tools">Tools</a>
+    </div>
+</nav>
+<script>
+(function() {
+    var path = window.location.pathname;
+    var nav = 'home';
+    if (path.includes('/tools')) nav = 'tools';
+    else if (path.includes('/games')) nav = 'games';
+    var el = document.querySelector('[data-nav="' + nav + '"]');
+    if (el) el.classList.add('active');
+})();
+</script>
+
 
     <div class="tool-header">
         <h1 style="font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0;">Sprite Sheet & Tileset Toolkit</h1>
@@ -125,7 +136,7 @@
                     </div>
                     <p class="warning-text">Sheet exceeds <span class="warning-value" id="gpuLimit">8192</span>px</p>
                 </div>
-                </div><!-- end controls-panel-content -->
+                </div>
 
                 <div class="controls-panel-actions">
                     <div class="action-buttons">
@@ -185,7 +196,6 @@
                         </div>
                     </div>
                     
-                    <!-- Sheet Preview Tab -->
                     <div class="preview-tab-content active" id="sheetPreviewTab">
                         <div class="preview-container" id="previewContainer">
                             <canvas id="previewCanvas" style="display: none;"></canvas>
@@ -205,7 +215,6 @@
                         </div>
                     </div>
                     
-                    <!-- Animation Preview Tab -->
                     <div class="preview-tab-content" id="animationPreviewTab">
                         <div class="animation-preview-container">
                             <canvas id="animationCanvas"></canvas>
@@ -377,7 +386,6 @@
                     <button class="rename-mode-tab" data-mode="replace" title="Find and replace text in names">Find/Replace</button>
                 </div>
                 
-                <!-- Pattern Mode -->
                 <div id="patternMode" class="rename-mode-content">
                     <div class="control-group">
                         <label class="input-group-label">Pattern (### = number)</label>
@@ -397,7 +405,6 @@
                     </div>
                 </div>
                 
-                <!-- Prefix Mode -->
                 <div id="prefixMode" class="rename-mode-content" style="display:none;">
                     <div class="control-group">
                         <label class="input-group-label">Prefix to Add</label>
@@ -405,7 +412,6 @@
                     </div>
                 </div>
                 
-                <!-- Suffix Mode -->
                 <div id="suffixMode" class="rename-mode-content" style="display:none;">
                     <div class="control-group">
                         <label class="input-group-label">Suffix to Add</label>
@@ -413,7 +419,6 @@
                     </div>
                 </div>
                 
-                <!-- Replace Mode -->
                 <div id="replaceMode" class="rename-mode-content" style="display:none;">
                     <div class="control-group">
                         <label class="input-group-label">Find</label>
@@ -464,11 +469,12 @@
     </div>
 
     <footer>
-        <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
-    </footer>
+    <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+</footer>
 
-    <script src="../js/gif.js"></script>
-    <script src="../js/utils.js"></script>
-    <script src="../js/sprite-sheet-toolkit.js"></script>
+
+    <script src="/js/gif.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/sprite-sheet-toolkit.js"></script>
 </body>
 </html>

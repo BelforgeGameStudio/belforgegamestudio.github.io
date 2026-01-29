@@ -4,26 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Belforge Game Studio</title>
-    <link rel="icon" type="image/svg+xml" href="../favicon.svg" color="#3b82f6">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
     <nav>
-        <a href="index.html" class="logo">
-            <div class="logo-icon">
-                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            </div>
-            <span>Belforge</span>
-        </a>
-        <div class="nav-links">
-            <a href="index.html" class="active">Home</a>
-            <!--a href="games.html">Games</a-->
-            <a href="tools.html">Tools</a>
+    <a href="/index.html" class="logo">
+        <div class="logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         </div>
-    </nav>
+        <span>Belforge</span>
+    </a>
+    <div class="nav-links">
+        <a href="/index.html" data-nav="home">Home</a>
+        <!--<a href="/games.html" data-nav="games">Games</a>-->
+        <a href="/tools.html" data-nav="tools">Tools</a>
+    </div>
+</nav>
+<script>
+(function() {
+    var path = window.location.pathname;
+    var nav = 'home';
+    if (path.includes('/tools')) nav = 'tools';
+    else if (path.includes('/games')) nav = 'games';
+    var el = document.querySelector('[data-nav="' + nav + '"]');
+    if (el) el.classList.add('active');
+})();
+</script>
+
 
     <main>
         <section class="hero">
@@ -31,56 +42,14 @@
                 <h1>Forging <span>Worlds</span>, One Pixel at a Time</h1>
                 <p>I'm a solo game developer crafting immersive experiences with heart, passion, and way too much coffee.</p>
                 <div class="hero-buttons">
-                    <a href="games.html" class="btn btn-primary">
+                    <a href="/games.html" class="btn btn-primary">
                         View Our Games
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                     </a>
-                    <a href="tools.html" class="btn btn-secondary">Free Tools</a>
+                    <a href="/tools.html" class="btn btn-secondary">Free Tools</a>
                 </div>
             </div>
         </section>
-
-        <!--section id="latest-games">
-            <div class="section-header">
-                <h2>Latest Games</h2>
-                <p>Check out what I'm currently working on.</p>
-            </div>
-            <div class="media-card-grid">
-                <div class="media-card">
-                    <div class="media-card-image">
-                        <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M14 10h2M14 14h2M18 12h.01"/></svg>
-                    </div>
-                    <div class="media-card-content">
-                        <span class="badge badge--accent">In Development</span>
-                        <h3>Untitled Idle RPG</h3>
-                        <p>A sophisticated idle RPG with complex progression, strategic combat, and multi-layered prestige systems.</p>
-                        <div class="tags">
-                            <span class="tag">Idle</span>
-                            <span class="tag">RPG</span>
-                            <span class="tag">Progression</span>
-                        </div>
-                        <a href="games.html" class="card-link">
-                            Learn More
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                        </a>
-                    </div>
-                </div>
-
-                <div class="media-card">
-                    <div class="media-card-image">
-                        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                    </div>
-                    <div class="media-card-content">
-                        <span class="badge">Coming Soon</span>
-                        <h3>More Projects</h3>
-                        <p>We're always working on new ideas. Stay tuned for announcements about upcoming projects and prototypes.</p>
-                        <div class="tags">
-                            <span class="tag">TBA</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section-->
 
         <section id="about">
             <div class="section-header">
@@ -101,7 +70,7 @@
                     </div>
                     <h3>Free Tools</h3>
                     <p>I build and share browser-based tools that make game dev easier. No downloads, no accounts, no data collection. Just useful stuff.</p>
-                    <a href="tools.html" class="card-link">
+                    <a href="/tools.html" class="card-link">
                         Browse Tools
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                     </a>
@@ -118,7 +87,8 @@
     </main>
 
     <footer>
-        <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
-    </footer>
+    <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+</footer>
+
 </body>
 </html>

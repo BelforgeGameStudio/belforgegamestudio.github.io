@@ -5,28 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Offline Progress Simulator - Belforge</title>
     <meta name="description" content="Free browser-based offline progress calculator for idle/incremental game developers. Simulate resource accumulation, test production formulas, and balance offline progression systems.">
-    <script src="../js/chart.js"></script>
-    <script src="../js/utils.js"></script>
-    <link rel="icon" type="image/svg+xml" href="../favicon.svg" color="#3b82f6">
+    <script src="/js/chart.js"></script>
+    <script src="/js/utils.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../css/styles.css">
-    <link rel="stylesheet" href="../css/tools-common.css">
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/tools-common.css">
 </head>
 <body>
     <nav>
-        <a href="../index.html" class="logo">
-            <div class="logo-icon">
-                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            </div>
-            <span>Belforge</span>
-        </a>
-        <div class="nav-links">
-            <a href="../index.html">Home</a>
-            <a href="../tools.html" class="active">Tools</a>
+    <a href="/index.html" class="logo">
+        <div class="logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         </div>
-    </nav>
+        <span>Belforge</span>
+    </a>
+    <div class="nav-links">
+        <a href="/index.html" data-nav="home">Home</a>
+        <!--<a href="/games.html" data-nav="games">Games</a>-->
+        <a href="/tools.html" data-nav="tools">Tools</a>
+    </div>
+</nav>
+<script>
+(function() {
+    var path = window.location.pathname;
+    var nav = 'home';
+    if (path.includes('/tools')) nav = 'tools';
+    else if (path.includes('/games')) nav = 'games';
+    var el = document.querySelector('[data-nav="' + nav + '"]');
+    if (el) el.classList.add('active');
+})();
+</script>
+
 
     <div class="tool-header">
         <h1 style="font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0;">Offline Progress Simulator</h1>
@@ -35,14 +47,12 @@
 
     <div class="tool-container">
         <div class="simulator-grid">
-            <!-- Controls Panel -->
             <aside class="controls-panel">
                 <div class="controls-panel-header">
                     <h2 class="panel-title">Configuration</h2>
                 </div>
                 
                 <div class="controls-panel-content">
-                    <!-- Production Formula -->
                     <div class="control-group formula-group">
                         <label class="control-label">Production Formula</label>
                         <textarea class="num-input formula-input" id="formula" placeholder="base * 1.05 ** level">base * 1.05 ** level</textarea>
@@ -82,7 +92,6 @@
                         </div>
                     </div>
 
-                    <!-- Base Production & Level -->
                     <div class="control-group">
                         <div class="input-row">
                             <div class="input-group">
@@ -96,7 +105,6 @@
                         </div>
                     </div>
 
-                    <!-- Offline Cap -->
                     <div class="control-group">
                         <div class="input-group">
                             <label class="input-group-label">Offline Cap (hours)</label>
@@ -105,7 +113,6 @@
                         <div class="formula-hint">Set to 0 for no cap</div>
                     </div>
 
-                    <!-- Time Presets -->
                     <div class="control-group">
                         <label class="control-label">Simulate Duration</label>
                         <div class="time-presets">
@@ -129,7 +136,6 @@
                         <div class="formula-hint">Click preset or enter custom time above</div>
                     </div>
 
-                    <!-- Tick Interval -->
                     <div class="control-group">
                         <div class="input-group">
                             <label class="input-group-label">Tick Interval (seconds)</label>
@@ -138,7 +144,6 @@
                         <div class="formula-hint">How often production is calculated (affects log detail)</div>
                     </div>
 
-                    <!-- Show Tick Log Toggle -->
                     <div class="control-group">
                         <div class="toggle-row">
                             <input type="checkbox" class="toggle-checkbox" id="showTickLog">
@@ -155,13 +160,11 @@
                 </div>
             </aside>
 
-            <!-- Results Panel -->
             <main class="results-panel">
                 <div class="results-header">
                     <h2 class="panel-title">Results</h2>
                 </div>
                 <div class="results-content">
-                    <!-- Summary Cards -->
                     <div class="summary-grid">
                         <div class="summary-card highlight">
                             <div class="summary-value" id="totalEarned">0</div>
@@ -185,7 +188,6 @@
                         </div>
                     </div>
 
-                    <!-- Chart -->
                     <div class="chart-container">
                         <canvas id="progressChart"></canvas>
                         <p class="chart-empty" id="chartEmpty">Run simulation to see results</p>
@@ -194,18 +196,14 @@
                         </div>
                     </div>
 
-                    <!-- Tick Log (optional) -->
                     <div class="tick-log-section" id="tickLogSection">
                         <div class="tick-log-header">
                             <span class="tick-log-title">Tick Breakdown</span>
                             <span style="font-size: 10px; color: var(--text-muted);" id="tickCount">0 ticks</span>
                         </div>
-                        <div class="tick-log" id="tickLog">
-                            <!-- Entries will be populated by JS -->
-                        </div>
+                        <div class="tick-log" id="tickLog"></div>
                     </div>
 
-                    <!-- Export -->
                     <div class="export-row">
                         <button class="btn" id="exportCsv" disabled>Export CSV</button>
                         <button class="btn" id="copyResults" disabled>Copy Results</button>
@@ -218,11 +216,12 @@
     <div class="toast" id="toast"></div>
 
     <footer>
-        <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
-    </footer>
+    <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+</footer>
 
-    <script src="../js/chart.js"></script>
-    <script src="../js/utils.js"></script>
-    <script src="../js/offline-progress-simulator.js"></script>
+
+    <script src="/js/chart.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/offline-progress-simulator.js"></script>
 </body>
 </html>
