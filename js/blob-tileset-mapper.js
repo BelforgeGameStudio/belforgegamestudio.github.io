@@ -1,11 +1,15 @@
 // ============================================
 // Blob Tileset Mapper — Tool Logic
 // ============================================
-// Depends on: js/utils.js (provides N, NE, E, SE, S, SW, W, NW,
-//   DIR_NAMES, CELL_TO_BIT, BIT_TO_CELL, DIAGONAL_REQUIREMENTS,
-//   VALID_BITMASKS, calculateBitmask, applyDiagonalGating,
-//   describeBitmask, isFullyTransparent, showToast, copyToClipboard,
-//   downloadFile)
+// Depends on: js/utils.js (BelforgeUtils module)
+
+const {
+    N, NE, E, SE, S, SW, W, NW,
+    DIR_NAMES, CELL_TO_BIT, BIT_TO_CELL,
+    DIAGONAL_REQUIREMENTS, VALID_BITMASKS,
+    calculateBitmask, applyDiagonalGating, describeBitmask, isFullyTransparent,
+    showToast, copyToClipboard, downloadFile
+} = BelforgeUtils;
 
 // ============================================
 // STATE
