@@ -1,0 +1,15 @@
+{
+  "name": "belforge-website",
+  "version": "1.0.0",
+  "description": "Belforge Game Studio website",
+  "scripts": {
+    "css:build": "npx tailwindcss -i ./src/css/input.css -o ./css/tailwind.css --minify",
+    "css:watch": "npx tailwindcss -i ./src/css/input.css -o ./css/tailwind.css --watch",
+    "html:build": "python build.py",
+    "build": "npm run css:build && npm run html:build",
+    "dev": "npm run css:watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

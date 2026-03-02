@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blob Tileset Mapper - Belforge</title>
+    <meta name="description" content="Free browser-based blob tileset mapper. Map 47-tile autotile sprite sheets to 8-bit bitmask values for procedural terrain generation. Export to C# or JSON.">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/tailwind.css">
+    <style>
+        /* ==========================================================================
+           Blob Tileset Mapper - Component Styles
+           Plain CSS (no @apply — these run in an inline <style> block)
+           Theme tokens: dark=#0d0d0f  card=#161619  hover=#1c1c20
+                         accent=#e85d04  glow=rgba(232,93,4,.15)
+                         border=#2a2a2e  warning=#f39c12  text=#f0f0f0
+                         muted=#888  dim=#666
+           ========================================================================== */
+
+        /* --- Sprite Tiles --- */
+        .sprite-tile {
+            position: relative; cursor: pointer;
+            border: 3px solid #2a2a2e; border-radius: 6px;
+            overflow: hidden; transition: all 150ms;
+            background-color: #0d0d0f;
+            background-image:
+                linear-gradient(45deg, #1c1c20 25%, transparent 25%),
+                linear-gradient(-45deg, #1c1c20 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #1c1c20 75%),
+                linear-gradient(-45deg, transparent 75%, #1c1c20 75%);
+            background-size: 8px 8px;
+            background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+        }
+        .sprite-tile:hover { border-color: #e85d04; transform: scale(1.05); z-index: 10; }
+        .sprite-tile.selected { border-color: #f39c12; transform: scale(1.05); box-shadow: 0 0 0 3px rgba(243,156,18,.3); }
+        .sprite-tile.assigned { opacity: .4; border-color: #e85d04; }
+        .sprite-tile.assigned:hover { opacity: .7; }
+        .sprite-tile.assigned::after {
+            content: '✓'; position: absolute; top: .125rem; right: .25rem;
+            color: #e85d04; font-size: 11px; line-height: 16px; font-weight: 700;
+            text-shadow: 0 1px 2px rgba(0,0,0,.8);
+        }
+        .sprite-tile canvas { display: block; image-rendering: pixelated; }
+
+        /* --- Bitmask Items --- */
+        .bitmask-item {
+            background-color: #0d0d0f; border: 1px solid #2a2a2e; border-radius: 3px;
+            padding: 2px; cursor: pointer; transition: all 150ms;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .bitmask-item:hover { border-color: #e85d04; }
+        .bitmask-item.assigned { border-color: #e85d04; background-color: rgba(232,93,4,.15); }
+        .bitmask-item.target { border-color: #f39c12; box-shadow: 0 0 12px rgba(243,156,18,.4); }
+
+        /* --- Mini-Grid (3×3 bitmask visualization) --- */
+        .mini-grid {
+            display: grid; gap: 1px; margin-bottom: 1px;
+            grid-template-columns: repeat(3, 9px);
+            grid-template-rows: repeat(3, 9px);
+        }
+        .mini-cell { border-radius: 2px; }
+        .mini-cell.center { background-color: #1c1c20; }
+        .mini-cell.neighbor-on { background-color: #e85d04; }
+        .mini-cell.neighbor-off { background-color: #161619; }
+        .mini-cell.neighbor-disabled { background-color: #0d0d0f; opacity: .3; }
+
+        /* --- Showcase Grid (All 47 Tiles) --- */
+        .showcase-cell {
+            width: 2.25rem; height: 2.25rem; background-color: #0d0d0f;
+            border-radius: 6px; cursor: pointer; position: relative;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 200ms;
+        }
+        .showcase-cell:hover { transform: scale(1.1); z-index: 10; }
+        .showcase-cell.unmapped { border: 1px dashed #f39c12; background: rgba(243,156,18,.15); }
+        .showcase-cell canvas { image-rendering: pixelated; width: 100%; height: 100%; }
+
+        /* --- Test Pattern Grid (13×13) --- */
+        .test-pattern-grid {
+            display: grid; gap: 1px; background-color: #2a2a2e;
+            border-radius: 6px; overflow: hidden; width: 100%;
+            grid-template-columns: repeat(17, 1fr);
+        }
+        .test-cell {
+            aspect-ratio: 1; background-color: #0d0d0f;
+            cursor: pointer; position: relative;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .test-cell.active { background-color: #161619; }
+        .test-cell.unmapped { background: rgba(243,156,18,.2); }
+        .test-cell canvas { image-rendering: pixelated; width: 100%; height: 100%; }
+
+        /* --- Sandbox Grid (5×5) --- */
+        .sandbox-grid {
+            display: grid; gap: 1px; background-color: #2a2a2e;
+            border-radius: 6px; overflow: hidden; width: fit-content;
+            grid-template-columns: repeat(5, 32px);
+            grid-template-rows: repeat(5, 32px);
+        }
+        .sandbox-cell {
+            width: 2rem; height: 2rem; background-color: #0d0d0f;
+            cursor: pointer; position: relative;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .sandbox-cell.active { background-color: #161619; }
+        .sandbox-cell.unmapped { border: 1px dashed #f39c12; background: rgba(243,156,18,.2); }
+        .sandbox-cell canvas { image-rendering: pixelated; width: 100%; height: 100%; }
+
+        /* --- Missing Mapping Chips --- */
+        .missing-item {
+            display: inline-block; padding: .125rem .5rem; margin: .125rem;
+            border-radius: 6px; cursor: pointer;
+            font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 14px;
+            color: #f39c12; transition: color 200ms, background-color 200ms;
+            background: rgba(243,156,18,.15);
+        }
+        .missing-item:hover { background: rgba(243,156,18,.3); }
+
+        /* --- Tooltip --- */
+        .mapper-tooltip {
+            position: fixed; background-color: #161619;
+            border: 1px solid #e85d04; border-radius: 6px; padding: .625rem;
+            z-index: 1000; pointer-events: none; max-width: 180px;
+        }
+
+        /* --- Export Output --- */
+        .export-output {
+            background-color: #0d0d0f; border: 1px solid #2a2a2e; border-radius: 6px;
+            padding: .625rem; font-family: 'JetBrains Mono', monospace;
+            font-size: 10px; line-height: 14px; color: #888;
+            white-space: pre; max-height: 11rem; overflow-y: auto;
+        }
+
+        /* --- Drop Zone --- */
+        .sprite-drop-zone {
+            border: 2px dashed #2a2a2e; border-radius: 8px; padding: 1.5rem;
+            text-align: center; cursor: pointer; transition: all 300ms; margin-bottom: 1rem;
+        }
+        .sprite-drop-zone:hover,
+        .sprite-drop-zone.dragover { border-color: #e85d04; background-color: rgba(232,93,4,.15); }
+        .sprite-drop-zone input { display: none; }
+
+        /* --- Sprite Grid --- */
+        .sprite-grid { display: grid; gap: .375rem; justify-content: flex-start; }
+
+        /* --- Bitmask Sprite Preview --- */
+        .bitmask-sprite-preview {
+            width: 29px; height: 29px; margin-top: 1px;
+            border-radius: 2px; image-rendering: pixelated;
+        }
+
+        /* --- Responsive: Desktop-Only Gate --- */
+        .desktop-only-notice { display: none; }
+        @media (max-width: 1059px) {
+            .desktop-only-notice {
+                display: flex; align-items: center; justify-content: center;
+                flex-direction: column; gap: 1rem;
+                position: fixed; inset: 0; z-index: 9999;
+                background-color: #0d0d0f; color: #f0f0f0;
+                padding: 2rem; text-align: center;
+            }
+            .desktop-only-notice h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1.5rem; font-weight: 700; }
+            .desktop-only-notice p { color: #888; font-size: .875rem; max-width: 28rem; }
+            .desktop-only-notice a {
+                display: inline-block; margin-top: .5rem; padding: .5rem 1.5rem;
+                background-color: #e85d04; color: #fff; border-radius: 6px;
+                text-decoration: none; font-weight: 600; font-size: .875rem;
+            }
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+    <nav class="nav">
+    <a href="/index.html" class="logo nav-logo">
+        <div class="logo-icon nav-logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <span>Belforge</span>
+    </a>
+    <div class="nav-links flex items-center gap-1">
+        <a href="/index.html" class="nav-link" data-nav="home">Home</a>
+        <!--<a href="/games.html" class="nav-link" data-nav="games">Games</a>-->
+        <a href="/tools.html" class="nav-link" data-nav="tools">Tools</a>
+    </div>
+</nav>
+<script>
+(function() {
+    var path = window.location.pathname;
+    var nav = 'home';
+    if (path.includes('/tools')) nav = 'tools';
+    else if (path.includes('/games')) nav = 'games';
+    var el = document.querySelector('[data-nav="' + nav + '"]');
+    if (el) el.classList.add('active');
+})();
+</script>
+
+
+    <!-- Responsive gate: shown only below 1100 px -->
+    <div class="desktop-only-notice">
+        <h2>Desktop Required</h2>
+        <p>The Blob Tileset Mapper needs at least 1060 px of screen width to display its three-panel workspace. Please use a desktop browser or widen your window.</p>
+        <a href="/tools.html">&larr; Back to Tools</a>
+    </div>
+
+    <!-- Full-width three-panel layout -->
+    <div class="h-screen-nav mt-[73px] flex flex-col">
+        <!-- Top bar with title and actions -->
+        <div class="flex-shrink-0 px-6 py-3 border-b border-border bg-dark-card flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <h1 class="font-display text-xl font-bold">Blob Tileset Mapper</h1>
+                <span class="text-text-muted text-sm">Map 47-tile autotile sheets to 8-bit bitmask values</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="progress" class="font-mono text-sm font-semibold text-accent">0/47 mapped</span>
+                <button class="btn btn-sm btn-secondary" onclick="clearAllMappings()">Clear All</button>
+                <button class="btn btn-sm btn-secondary" onclick="exportJSON()">Export JSON</button>
+                <button class="btn btn-sm btn-secondary" onclick="importJSON()">Import JSON</button>
+            </div>
+        </div>
+
+        <!-- Three-panel main area -->
+        <div class="flex-1 flex min-h-0">
+            <!-- Panel 1: Sprite Sheet -->
+            <div class="w-1/3 min-w-[320px] max-w-[380px] border-r border-border flex flex-col bg-dark-card">
+                <div class="flex-shrink-0 px-5 py-3 border-b border-border flex justify-between items-center">
+                    <h2 class="font-display text-sm font-semibold text-accent">Sprite Sheet</h2>
+                    <span id="sprite-count" class="text-xs text-text-muted">No sprites loaded</span>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5">
+                    <!-- Drop zone -->
+                    <div class="sprite-drop-zone" id="drop-zone">
+                        <p class="text-sm text-text-muted">📁 Drop sprite sheet PNG here or click to browse</p>
+                        <input type="file" id="file-input" accept="image/png">
+                    </div>
+                    
+                    <!-- Tile config -->
+                    <div class="flex flex-wrap gap-3 items-center mb-4 text-xs">
+                        <label class="text-text-muted uppercase tracking-wider">Tile Size:</label>
+                        <input type="number" class="input w-14 text-center" id="tile-width" value="32" min="8" max="256">
+                        <span class="text-text-muted">×</span>
+                        <input type="number" class="input w-14 text-center" id="tile-height" value="32" min="8" max="256">
+                        <button class="btn btn-sm" onclick="reloadSpriteSheet()">Reload</button>
+                    </div>
+                    
+                    <!-- Zoom control -->
+                    <div class="flex items-center gap-3 mb-4 text-xs">
+                        <label class="text-text-muted uppercase tracking-wider">Zoom:</label>
+                        <input type="range" id="display-zoom" min="48" max="128" value="72" 
+                               class="w-24 accent-accent" onchange="renderSpriteGrid()">
+                    </div>
+                    
+                    <!-- Sprite grid -->
+                    <div class="sprite-grid" id="sprite-grid"></div>
+                </div>
+            </div>
+
+            <!-- Panel 2: Bitmask Reference -->
+            <div class="flex-1 min-w-[360px] border-r border-border flex flex-col bg-dark-card">
+                <div class="flex-shrink-0 px-5 py-3 border-b border-border flex justify-between items-center">
+                    <h2 class="font-display text-sm font-semibold text-accent">Bitmask Reference (47 Values)</h2>
+                    <button class="btn btn-sm" onclick="deselectAll()">Deselect</button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5">
+                    <!-- Bitmask grid -->
+                    <div id="bitmask-grid" class="grid gap-px" style="grid-template-columns: repeat(16, 1fr);"></div>
+                    
+                    <!-- Export section -->
+                    <div class="mt-6 pt-4 border-t border-border">
+                        <div class="flex gap-2 mb-3">
+                            <button class="btn btn-primary flex-1 text-xs py-2.5" onclick="generateExport()">Generate C# Array</button>
+                            <button class="btn btn-secondary text-xs py-2.5 px-4" onclick="copyExport()">📋 Copy</button>
+                        </div>
+                        <div class="export-output" id="export-output">// Click "Generate C# Array" to see output</div>
+                    </div>
+
+                    <!-- In-Context Preview (moved here from Live Validation) -->
+                    <div class="mt-5 pt-4 border-t border-border">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">🧪 In-Context Preview</span>
+                            <div class="flex gap-1">
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="resetTestPattern()">Reset</button>
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="clearTestPattern()">Clear</button>
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="fillTestPattern()">Fill</button>
+                            </div>
+                        </div>
+                        <p class="text-2xs text-text-dim mb-2">Click to toggle. <span id="pattern-coverage">0/47 bitmasks used</span></p>
+                        <div class="test-pattern-grid" id="test-pattern-grid"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 3: Live Validation -->
+            <div class="w-[380px] flex-shrink-0 flex flex-col bg-dark-card">
+                <div class="flex-shrink-0 px-5 py-3 border-b border-border flex justify-between items-center">
+                    <h2 class="font-display text-sm font-semibold text-accent">Live Validation</h2>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5 space-y-5">
+                    <!-- All 47 Tiles Showcase -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">🎯 All 47 Tiles</span>
+                            <span id="test-coverage" class="text-2xs text-text-muted">0/47 mapped</span>
+                        </div>
+                        <p class="text-2xs text-text-dim mb-2">Every bitmask value. Click to jump. Orange = unmapped.</p>
+                        <div id="showcase-grid" class="grid gap-0.5" style="grid-template-columns: repeat(8, 36px);"></div>
+                    </div>
+
+                    <!-- Missing Mappings -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">⚠️ Missing Mappings</span>
+                        </div>
+                        <div id="missing-list" class="bg-dark rounded-md p-2.5 text-xs text-text-muted max-h-20 overflow-y-auto">
+                            <em class="text-text-dim">All mapped!</em>
+                        </div>
+                    </div>
+
+                    <!-- Interactive Sandbox -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">🎮 Sandbox</span>
+                            <div class="flex gap-1">
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="clearPreview()">Clear</button>
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="fillPreview()">Fill</button>
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="randomPreview()">Random</button>
+                            </div>
+                        </div>
+                        <p class="text-2xs text-text-dim mb-2">Click cells to toggle:</p>
+                        <div class="sandbox-grid" id="preview-grid"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast"></div>
+    
+    <!-- Tooltip -->
+    <div id="tooltip" class="mapper-tooltip hidden"></div>
+
+    <footer class="py-8 px-10 text-center text-text-muted text-sm border-t border-border">
+    <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+</footer>
+
+    <!-- Footer hidden in full-screen tool mode -->
+
+    <script>
+        // ============================================
+        // CONSTANTS
+        // ============================================
+        
+        // Bitmask bit positions
+        const N = 1, NE = 2, E = 4, SE = 8, S = 16, SW = 32, W = 64, NW = 128;
+        
+        // Direction names for display
+        const DIR_NAMES = { 1: 'N', 2: 'NE', 4: 'E', 8: 'SE', 16: 'S', 32: 'SW', 64: 'W', 128: 'NW' };
+        
+        // The 47 unique reduced bitmask values (diagonal gating applied)
+        const VALID_BITMASKS = [
+            0, 1, 4, 5, 7, 16, 17, 20, 21, 23, 28, 29, 31, 64, 65, 68, 69, 71, 80, 81,
+            84, 85, 87, 92, 93, 95, 112, 113, 116, 117, 119, 124, 125, 127, 193, 197,
+            199, 209, 213, 215, 221, 223, 241, 245, 247, 253, 255
+        ];
+        
+        // Mini-grid cell positions (0-8, row-major)
+        const CELL_TO_BIT = {
+            0: NW, 1: N, 2: NE,
+            3: W,  4: 0, 5: E,
+            6: SW, 7: S, 8: SE
+        };
+        
+        const BIT_TO_CELL = {
+            [N]: 1, [NE]: 2, [E]: 5, [SE]: 8, [S]: 7, [SW]: 6, [W]: 3, [NW]: 0
+        };
+        
+        // Cardinal neighbors required for each diagonal
+        const DIAGONAL_REQUIREMENTS = {
+            [NE]: [N, E],
+            [SE]: [S, E],
+            [SW]: [S, W],
+            [NW]: [N, W]
+        };
+
+        // ============================================
+        // STATE
+        // ============================================
+        
+        let spriteSheet = null;
+        let sprites = [];
+        let mappings = {};
+        let reverseMappings = {};
+        let selectedSpriteIndex = null;
+        let previewGrid = new Array(25).fill(false);
+        
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            initDropZone();
+            initBitmaskGrid();
+            initPreviewGrid();
+            initShowcaseGrid();
+            initTestPatternGrid();
+            loadFromLocalStorage();
+            updateMissingList();
+        });
+        
+        function initDropZone() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            
+            dropZone.addEventListener('click', () => fileInput.click());
+            
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+            
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('dragover');
+            });
+            
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file && file.type === 'image/png') {
+                    loadImage(file);
+                }
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) loadImage(file);
+            });
+        }
+        
+        function initBitmaskGrid() {
+            const grid = document.getElementById('bitmask-grid');
+            grid.innerHTML = '';
+            
+            VALID_BITMASKS.forEach(value => {
+                const item = createBitmaskItem(value);
+                grid.appendChild(item);
+            });
+        }
+        
+        function createBitmaskItem(bitmaskValue) {
+            const item = document.createElement('div');
+            item.className = 'bitmask-item';
+            item.dataset.bitmask = bitmaskValue;
+            
+            const miniGrid = document.createElement('div');
+            miniGrid.className = 'mini-grid';
+            
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'mini-cell';
+                
+                if (i === 4) {
+                    cell.classList.add('center');
+                } else {
+                    const bit = CELL_TO_BIT[i];
+                    const isSet = (bitmaskValue & bit) !== 0;
+                    const isDiagonal = [NE, SE, SW, NW].includes(bit);
+                    
+                    if (isDiagonal) {
+                        const [req1, req2] = DIAGONAL_REQUIREMENTS[bit];
+                        const cardinalsPresent = (bitmaskValue & req1) && (bitmaskValue & req2);
+                        
+                        if (!cardinalsPresent) {
+                            cell.classList.add('neighbor-disabled');
+                        } else {
+                            cell.classList.add(isSet ? 'neighbor-on' : 'neighbor-off');
+                        }
+                    } else {
+                        cell.classList.add(isSet ? 'neighbor-on' : 'neighbor-off');
+                    }
+                }
+                
+                miniGrid.appendChild(cell);
+            }
+            
+            item.appendChild(miniGrid);
+
+            const label = document.createElement('div');
+            label.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:7px;line-height:1;color:#888;margin-top:1px;';
+            label.textContent = bitmaskValue;
+            item.appendChild(label);
+
+            const preview = document.createElement('canvas');
+            preview.className = 'bitmask-sprite-preview';
+            preview.width = 29;
+            preview.height = 29;
+            preview.style.display = 'none';
+            item.appendChild(preview);
+
+            item.title = `Bitmask ${bitmaskValue}: ${describeBitmask(bitmaskValue)}`;
+            item.addEventListener('click', () => onBitmaskClick(bitmaskValue));
+            
+            return item;
+        }
+        
+        function initPreviewGrid() {
+            const grid = document.getElementById('preview-grid');
+            grid.innerHTML = '';
+            
+            for (let i = 0; i < 25; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'sandbox-cell';
+                cell.dataset.index = i;
+                cell.addEventListener('click', () => togglePreviewCell(i));
+                grid.appendChild(cell);
+            }
+        }
+
+        function initShowcaseGrid() {
+            const grid = document.getElementById('showcase-grid');
+            grid.innerHTML = '';
+            
+            VALID_BITMASKS.forEach(bitmask => {
+                const cell = document.createElement('div');
+                cell.className = 'showcase-cell';
+                cell.dataset.bitmask = bitmask;
+                cell.addEventListener('click', () => scrollToBitmask(bitmask));
+                grid.appendChild(cell);
+            });
+            
+            updateShowcase();
+        }
+
+        function updateShowcase() {
+            const cells = document.querySelectorAll('#showcase-grid .showcase-cell');
+            let mappedCount = 0;
+            
+            cells.forEach((cell) => {
+                const bitmask = parseInt(cell.dataset.bitmask);
+                cell.innerHTML = '';
+                cell.classList.remove('unmapped');
+                cell.title = `Bitmask ${bitmask}: ${describeBitmask(bitmask)}`;
+                
+                const spriteIndex = mappings[bitmask];
+                
+                if (spriteIndex !== undefined) {
+                    mappedCount++;
+                    const sprite = sprites.find(s => s.index === spriteIndex);
+                    if (sprite) {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 36;
+                        canvas.height = 36;
+                        const ctx = canvas.getContext('2d');
+                        ctx.imageSmoothingEnabled = false;
+                        ctx.drawImage(sprite.canvas, 0, 0, 36, 36);
+                        cell.appendChild(canvas);
+                    }
+                } else {
+                    cell.classList.add('unmapped');
+                    const label = document.createElement('div');
+                    label.className = 'font-mono text-[9px] text-warning';
+                    label.textContent = bitmask;
+                    cell.appendChild(label);
+                }
+            });
+            
+            document.getElementById('test-coverage').textContent = `${mappedCount}/47 mapped`;
+        }
+
+        const TEST_GRID_COLS = 17;
+        const TEST_GRID_ROWS = 8;
+
+        // Optimized 17x8 pattern that produces all 47 unique reduced bitmask values
+        const DEFAULT_TEST_PATTERN = [
+            1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1,
+            1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1,
+            1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0,
+            1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0,
+            0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0,
+            1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0,
+            1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0,
+            1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1
+        ];
+        
+        let testPatternGrid = [...DEFAULT_TEST_PATTERN];
+
+        function initTestPatternGrid() {
+            const grid = document.getElementById('test-pattern-grid');
+            grid.innerHTML = '';
+            
+            const totalCells = TEST_GRID_COLS * TEST_GRID_ROWS;
+            if (testPatternGrid.length !== totalCells) {
+                testPatternGrid = new Array(totalCells).fill(0);
+            }
+
+            for (let i = 0; i < totalCells; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'test-cell';
+                cell.dataset.index = i;
+                cell.addEventListener('click', () => toggleTestPatternCell(i));
+                grid.appendChild(cell);
+            }
+            
+            updateTestPattern();
+        }
+
+        function toggleTestPatternCell(index) {
+            testPatternGrid[index] = testPatternGrid[index] ? 0 : 1;
+            updateTestPattern();
+        }
+
+        function resetTestPattern() {
+            testPatternGrid = [...DEFAULT_TEST_PATTERN];
+            updateTestPattern();
+        }
+
+        function clearTestPattern() {
+            testPatternGrid = new Array(TEST_GRID_COLS * TEST_GRID_ROWS).fill(0);
+            updateTestPattern();
+        }
+
+        function fillTestPattern() {
+            testPatternGrid = new Array(TEST_GRID_COLS * TEST_GRID_ROWS).fill(1);
+            updateTestPattern();
+        }
+
+        function updateTestPattern() {
+            const cells = document.querySelectorAll('#test-pattern-grid .test-cell');
+            const usedBitmasks = new Set();
+            
+            cells.forEach((cell, i) => {
+                cell.innerHTML = '';
+                cell.classList.remove('active', 'unmapped');
+                
+                if (!testPatternGrid[i]) return;
+                
+                cell.classList.add('active');
+                const bitmask = calculateBitmask(i, testPatternGrid, TEST_GRID_COLS, TEST_GRID_ROWS);
+                const reducedBitmask = applyDiagonalGating(bitmask);
+                usedBitmasks.add(reducedBitmask);
+                
+                const spriteIndex = mappings[reducedBitmask];
+                
+                if (spriteIndex !== undefined) {
+                    const sprite = sprites.find(s => s.index === spriteIndex);
+                    if (sprite) {
+                        const cellSize = cell.clientWidth || 45;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = cellSize;
+                        canvas.height = cellSize;
+                        const ctx = canvas.getContext('2d');
+                        ctx.imageSmoothingEnabled = false;
+                        ctx.drawImage(sprite.canvas, 0, 0, cellSize, cellSize);
+                        cell.appendChild(canvas);
+                    }
+                } else {
+                    cell.classList.add('unmapped');
+                    const debug = document.createElement('div');
+                    debug.className = 'font-mono text-[8px] text-warning';
+                    debug.textContent = reducedBitmask;
+                    cell.appendChild(debug);
+                }
+            });
+            
+            document.getElementById('pattern-coverage').textContent = `${usedBitmasks.size}/47 bitmasks used`;
+        }
+
+        // ============================================
+        // IMAGE LOADING
+        // ============================================
+        
+        function loadImage(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    spriteSheet = img;
+                    sliceSpriteSheet();
+                    saveToLocalStorage();
+                };
+                img.src = e.target.result;
+                localStorage.setItem('blobMapper_spriteSheetData', e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function reloadSpriteSheet() {
+            if (spriteSheet) {
+                sliceSpriteSheet();
+            }
+        }
+        
+        function sliceSpriteSheet() {
+            const tileW = parseInt(document.getElementById('tile-width').value);
+            const tileH = parseInt(document.getElementById('tile-height').value);
+            
+            const cols = Math.floor(spriteSheet.width / tileW);
+            const rows = Math.floor(spriteSheet.height / tileH);
+            
+            sprites = [];
+            let spriteIndex = 0;
+            
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = tileW;
+                    canvas.height = tileH;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(spriteSheet, x * tileW, y * tileH, tileW, tileH, 0, 0, tileW, tileH);
+                    
+                    const imageData = ctx.getImageData(0, 0, tileW, tileH);
+                    
+                    if (!isFullyTransparent(imageData)) {
+                        sprites.push({
+                            index: spriteIndex,
+                            gridX: x,
+                            gridY: y,
+                            canvas: canvas,
+                            imageData: imageData
+                        });
+                    }
+                    spriteIndex++;
+                }
+            }
+            
+            renderSpriteGrid();
+            updateProgress();
+            updateShowcase();
+            updateTestPattern();
+            updatePreview();
+            updateMissingList();
+            
+            document.getElementById('sprite-count').textContent = `${sprites.length} sprites loaded`;
+            showStatus(`Loaded ${sprites.length} sprites from ${cols}×${rows} grid`);
+        }
+        
+        function isFullyTransparent(imageData) {
+            const data = imageData.data;
+            for (let i = 3; i < data.length; i += 4) {
+                if (data[i] > 0) return false;
+            }
+            return true;
+        }
+
+        // ============================================
+        // SPRITE GRID RENDERING
+        // ============================================
+        
+        function renderSpriteGrid() {
+            const grid = document.getElementById('sprite-grid');
+            grid.innerHTML = '';
+            
+            const displaySize = parseInt(document.getElementById('display-zoom').value);
+            const cols = displaySize <= 64 ? 6 : displaySize <= 80 ? 5 : 4;
+            grid.style.gridTemplateColumns = `repeat(${cols}, ${displaySize}px)`;
+            
+            sprites.forEach((sprite) => {
+                const tile = document.createElement('div');
+                tile.className = 'sprite-tile';
+                tile.dataset.spriteIndex = sprite.index;
+                tile.style.width = displaySize + 'px';
+                tile.style.height = displaySize + 'px';
+                
+                if (reverseMappings[sprite.index] !== undefined) {
+                    tile.classList.add('assigned');
+                }
+                
+                if (selectedSpriteIndex === sprite.index) {
+                    tile.classList.add('selected');
+                }
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = displaySize;
+                canvas.height = displaySize;
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(sprite.canvas, 0, 0, displaySize, displaySize);
+                tile.appendChild(canvas);
+                
+                const label = document.createElement('div');
+                label.className = 'absolute bottom-0 left-0 right-0 bg-black/85 text-text font-mono text-2xs font-semibold text-center py-0.5 px-1';
+                label.textContent = sprite.index;
+                tile.appendChild(label);
+                
+                tile.addEventListener('click', () => onSpriteClick(sprite.index));
+                tile.addEventListener('mouseenter', (e) => showSuggestions(sprite, e));
+                tile.addEventListener('mouseleave', hideSuggestions);
+                
+                grid.appendChild(tile);
+            });
+        }
+
+        // ============================================
+        // MAPPING LOGIC
+        // ============================================
+        
+        function onSpriteClick(spriteIndex) {
+            if (selectedSpriteIndex === spriteIndex) {
+                selectedSpriteIndex = null;
+            } else {
+                selectedSpriteIndex = spriteIndex;
+            }
+            renderSpriteGrid();
+            updateBitmaskHighlights();
+        }
+        
+        function onBitmaskClick(bitmaskValue) {
+            if (selectedSpriteIndex === null) return;
+            
+            const prevBitmask = reverseMappings[selectedSpriteIndex];
+            if (prevBitmask !== undefined) {
+                delete mappings[prevBitmask];
+                updateBitmaskItem(prevBitmask);
+            }
+            
+            const prevSprite = mappings[bitmaskValue];
+            if (prevSprite !== undefined) {
+                delete reverseMappings[prevSprite];
+            }
+            
+            mappings[bitmaskValue] = selectedSpriteIndex;
+            reverseMappings[selectedSpriteIndex] = bitmaskValue;
+            
+            updateBitmaskItem(bitmaskValue);
+            selectedSpriteIndex = null;
+            renderSpriteGrid();
+            updateBitmaskHighlights();
+            updateProgress();
+            updatePreview();
+            updateShowcase();
+            updateTestPattern();
+            updateMissingList();
+            saveToLocalStorage();
+            
+            showStatus(`Mapped sprite ${mappings[bitmaskValue]} → bitmask ${bitmaskValue}`);
+        }
+        
+        function updateBitmaskItem(bitmaskValue) {
+            const item = document.querySelector(`.bitmask-item[data-bitmask="${bitmaskValue}"]`);
+            if (!item) return;
+            
+            const preview = item.querySelector('.bitmask-sprite-preview');
+            const spriteIndex = mappings[bitmaskValue];
+            
+            const miniGrid = item.querySelector('.mini-grid');
+            if (spriteIndex !== undefined) {
+                item.classList.add('assigned');
+                const sprite = sprites.find(s => s.index === spriteIndex);
+                if (sprite) {
+                    const ctx = preview.getContext('2d');
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.clearRect(0, 0, 29, 29);
+                    ctx.drawImage(sprite.canvas, 0, 0, 29, 29);
+                    preview.style.display = 'block';
+                    if (miniGrid) miniGrid.style.display = 'none';
+                }
+            } else {
+                item.classList.remove('assigned');
+                preview.style.display = 'none';
+                if (miniGrid) miniGrid.style.display = '';
+            }
+        }
+        
+        function updateBitmaskHighlights() {
+            document.querySelectorAll('.bitmask-item').forEach(item => {
+                item.classList.remove('target');
+            });
+        }
+        
+        function updateProgress() {
+            const mapped = Object.keys(mappings).length;
+            document.getElementById('progress').textContent = `${mapped}/47 mapped`;
+        }
+        
+        function deselectAll() {
+            selectedSpriteIndex = null;
+            renderSpriteGrid();
+            updateBitmaskHighlights();
+        }
+        
+        function clearAllMappings() {
+            if (confirm('Clear all mappings? This cannot be undone.')) {
+                mappings = {};
+                reverseMappings = {};
+                VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+                renderSpriteGrid();
+                updateProgress();
+                updatePreview();
+                updateShowcase();
+                updateTestPattern();
+                updateMissingList();
+                saveToLocalStorage();
+                showStatus('All mappings cleared');
+            }
+        }
+
+        // ============================================
+        // AUTO-DETECT SUGGESTIONS
+        // ============================================
+        
+        function analyzeSpritEdges(sprite) {
+            const data = sprite.imageData.data;
+            const w = sprite.canvas.width;
+            const h = sprite.canvas.height;
+            
+            const regions = {
+                [N]:  { x1: w * 0.25, y1: 0, x2: w * 0.75, y2: h * 0.25 },
+                [S]:  { x1: w * 0.25, y1: h * 0.75, x2: w * 0.75, y2: h },
+                [E]:  { x1: w * 0.75, y1: h * 0.25, x2: w, y2: h * 0.75 },
+                [W]:  { x1: 0, y1: h * 0.25, x2: w * 0.25, y2: h * 0.75 },
+                [NE]: { x1: w * 0.75, y1: 0, x2: w, y2: h * 0.25 },
+                [NW]: { x1: 0, y1: 0, x2: w * 0.25, y2: h * 0.25 },
+                [SE]: { x1: w * 0.75, y1: h * 0.75, x2: w, y2: h },
+                [SW]: { x1: 0, y1: h * 0.75, x2: w * 0.25, y2: h }
+            };
+            
+            const edgeScores = {};
+            
+            for (const [dir, region] of Object.entries(regions)) {
+                let totalPixels = 0;
+                let opaquePixels = 0;
+                
+                for (let y = Math.floor(region.y1); y < Math.floor(region.y2); y++) {
+                    for (let x = Math.floor(region.x1); x < Math.floor(region.x2); x++) {
+                        const idx = (y * w + x) * 4;
+                        totalPixels++;
+                        if (data[idx + 3] > 128) opaquePixels++;
+                    }
+                }
+                
+                edgeScores[dir] = totalPixels > 0 ? opaquePixels / totalPixels : 0;
+            }
+            
+            return edgeScores;
+        }
+        
+        function getSuggestions(sprite) {
+            const edgeScores = analyzeSpritEdges(sprite);
+            const threshold = 0.5;
+            
+            const detectedEdges = {};
+            for (const [dir, score] of Object.entries(edgeScores)) {
+                detectedEdges[dir] = score > threshold;
+            }
+            
+            const scores = [];
+            
+            for (const bitmask of VALID_BITMASKS) {
+                if (mappings[bitmask] !== undefined) continue;
+                
+                let matchScore = 0;
+                let totalChecks = 0;
+                
+                for (const dir of [N, E, S, W, NE, SE, SW, NW]) {
+                    const bitmaskHasDir = (bitmask & dir) !== 0;
+                    const spriteHasDir = detectedEdges[dir];
+                    
+                    const isDiagonal = [NE, SE, SW, NW].includes(dir);
+                    if (isDiagonal) {
+                        const [req1, req2] = DIAGONAL_REQUIREMENTS[dir];
+                        const cardinalsPresent = (bitmask & req1) && (bitmask & req2);
+                        if (!cardinalsPresent) continue;
+                    }
+                    
+                    if (bitmaskHasDir === spriteHasDir) {
+                        matchScore += 1;
+                    }
+                    totalChecks++;
+                }
+                
+                if (totalChecks > 0) {
+                    scores.push({
+                        bitmask: bitmask,
+                        confidence: matchScore / totalChecks
+                    });
+                }
+            }
+            
+            scores.sort((a, b) => b.confidence - a.confidence);
+            return scores.slice(0, 3);
+        }
+        
+        function showSuggestions(sprite, event) {
+            if (reverseMappings[sprite.index] !== undefined) return;
+            
+            const suggestions = getSuggestions(sprite);
+            if (suggestions.length === 0) return;
+            
+            const tooltip = document.getElementById('tooltip');
+            tooltip.innerHTML = `
+                <div class="text-2xs text-accent uppercase tracking-wider mb-1.5">Suggested matches</div>
+                ${suggestions.map(s => `
+                    <div class="flex items-center justify-between gap-2 text-xs py-0.5">
+                        <span>Bitmask ${s.bitmask}</span>
+                        <span class="text-accent font-semibold">${Math.round(s.confidence * 100)}%</span>
+                    </div>
+                `).join('')}
+            `;
+            
+            tooltip.classList.remove('hidden');
+            tooltip.style.left = (event.pageX + 15) + 'px';
+            tooltip.style.top = (event.pageY + 15) + 'px';
+        }
+        
+        function hideSuggestions() {
+            document.getElementById('tooltip').classList.add('hidden');
+        }
+
+        // ============================================
+        // PREVIEW GRID (Sandbox)
+        // ============================================
+        
+        function togglePreviewCell(index) {
+            previewGrid[index] = !previewGrid[index];
+            updatePreview();
+        }
+        
+        function clearPreview() {
+            previewGrid.fill(false);
+            updatePreview();
+        }
+        
+        function fillPreview() {
+            previewGrid.fill(true);
+            updatePreview();
+        }
+        
+        function randomPreview() {
+            previewGrid = previewGrid.map(() => Math.random() > 0.5);
+            updatePreview();
+        }
+        
+        function updatePreview() {
+            const cells = document.querySelectorAll('#preview-grid .sandbox-cell');
+            
+            cells.forEach((cell, i) => {
+                cell.innerHTML = '';
+                cell.classList.remove('active', 'unmapped');
+                
+                if (!previewGrid[i]) return;
+                
+                cell.classList.add('active');
+                const bitmask = calculateBitmask(i, previewGrid, 5);
+                const reducedBitmask = applyDiagonalGating(bitmask);
+                const spriteIndex = mappings[reducedBitmask];
+                
+                if (spriteIndex !== undefined) {
+                    const sprite = sprites.find(s => s.index === spriteIndex);
+                    if (sprite) {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 32;
+                        canvas.height = 32;
+                        const ctx = canvas.getContext('2d');
+                        ctx.imageSmoothingEnabled = false;
+                        ctx.drawImage(sprite.canvas, 0, 0, 32, 32);
+                        cell.appendChild(canvas);
+                    }
+                } else {
+                    cell.classList.add('unmapped');
+                    const debug = document.createElement('div');
+                    debug.className = 'font-mono text-[8px] text-warning';
+                    debug.textContent = reducedBitmask;
+                    cell.appendChild(debug);
+                }
+            });
+        }
+
+        function updateMissingList() {
+            const missingList = document.getElementById('missing-list');
+            const missing = VALID_BITMASKS.filter(v => mappings[v] === undefined);
+            
+            if (missing.length === 0) {
+                missingList.innerHTML = '<em class="text-accent">✓ All 47 bitmasks mapped!</em>';
+            } else {
+                missingList.innerHTML = missing.map(v => 
+                    `<span class="missing-item" onclick="scrollToBitmask(${v})" title="${describeBitmask(v)}">${v}</span>`
+                ).join('');
+            }
+        }
+
+        function scrollToBitmask(bitmaskValue) {
+            const item = document.querySelector(`.bitmask-item[data-bitmask="${bitmaskValue}"]`);
+            if (item) {
+                item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                item.classList.add('target');
+                setTimeout(() => item.classList.remove('target'), 2000);
+            }
+        }
+        
+        function calculateBitmask(index, grid, gridCols, gridRows) {
+            const cols = gridCols;
+            const rows = gridRows || gridCols;
+            const x = index % cols;
+            const y = Math.floor(index / cols);
+
+            let bitmask = 0;
+
+            const neighbors = [
+                { dx: 0, dy: -1, bit: N },
+                { dx: 1, dy: -1, bit: NE },
+                { dx: 1, dy: 0, bit: E },
+                { dx: 1, dy: 1, bit: SE },
+                { dx: 0, dy: 1, bit: S },
+                { dx: -1, dy: 1, bit: SW },
+                { dx: -1, dy: 0, bit: W },
+                { dx: -1, dy: -1, bit: NW }
+            ];
+
+            for (const { dx, dy, bit } of neighbors) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                    const ni = ny * cols + nx;
+                    if (grid[ni]) {
+                        bitmask |= bit;
+                    }
+                }
+            }
+            
+            return bitmask;
+        }
+        
+        function applyDiagonalGating(bitmask) {
+            let result = bitmask;
+            
+            if (!((bitmask & N) && (bitmask & E))) result &= ~NE;
+            if (!((bitmask & S) && (bitmask & E))) result &= ~SE;
+            if (!((bitmask & S) && (bitmask & W))) result &= ~SW;
+            if (!((bitmask & N) && (bitmask & W))) result &= ~NW;
+            
+            return result;
+        }
+
+        // ============================================
+        // EXPORT
+        // ============================================
+        
+        function generateExport() {
+            if (sprites.length === 0) {
+                document.getElementById('export-output').textContent = '// No sprites loaded';
+                return;
+            }
+            
+            const lines = ['// Blob tileset bitmask mapping', '// Generated by Belforge Blob Tileset Mapper', ''];
+            lines.push(`public const int TILES_PER_VARIANT = ${sprites.length};`);
+            lines.push('');
+            lines.push('// Maps sprite sheet position (index) to bitmask value');
+            lines.push('public static readonly int[] BitmaskByPosition = {');
+            
+            const maxIndex = Math.max(...sprites.map(s => s.index));
+            
+            for (let i = 0; i <= maxIndex; i++) {
+                const bitmask = reverseMappings[i];
+                const sprite = sprites.find(s => s.index === i);
+                
+                if (sprite) {
+                    const value = bitmask !== undefined ? bitmask : -1;
+                    const comment = bitmask !== undefined ? describeBitmask(bitmask) : 'UNMAPPED';
+                    lines.push(`    ${value.toString().padStart(3)},  // pos ${i.toString().padStart(2)}: ${comment}`);
+                }
+            }
+            
+            lines.push('};');
+            lines.push('');
+            lines.push('// Maps bitmask value to sprite sheet position');
+            lines.push('public static readonly Dictionary<int, int> PositionByBitmask = new Dictionary<int, int> {');
+            
+            const sortedMappings = Object.entries(mappings).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+            for (const [bitmask, spriteIndex] of sortedMappings) {
+                lines.push(`    { ${bitmask.toString().padStart(3)}, ${spriteIndex.toString().padStart(2)} },  // ${describeBitmask(parseInt(bitmask))}`);
+            }
+            
+            lines.push('};');
+            
+            document.getElementById('export-output').textContent = lines.join('\n');
+        }
+        
+        function describeBitmask(bitmask) {
+            if (bitmask === 0) return 'isolated';
+            if (bitmask === 255) return 'all neighbors';
+            
+            const dirs = [];
+            for (const [bit, name] of Object.entries(DIR_NAMES)) {
+                if (bitmask & parseInt(bit)) {
+                    dirs.push(name);
+                }
+            }
+            return dirs.join('+');
+        }
+        
+        function copyExport() {
+            const output = document.getElementById('export-output').textContent;
+            navigator.clipboard.writeText(output).then(() => {
+                showStatus('Copied to clipboard!');
+            });
+        }
+
+        // ============================================
+        // JSON IMPORT/EXPORT
+        // ============================================
+        
+        function exportJSON() {
+            const data = {
+                mappings: mappings,
+                tileWidth: parseInt(document.getElementById('tile-width').value),
+                tileHeight: parseInt(document.getElementById('tile-height').value),
+                exportedAt: new Date().toISOString()
+            };
+            
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'blob-tileset-mapping.json';
+            a.click();
+            
+            URL.revokeObjectURL(url);
+            showStatus('Mapping exported as JSON');
+        }
+        
+        function importJSON() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        
+                        if (data.tileWidth) document.getElementById('tile-width').value = data.tileWidth;
+                        if (data.tileHeight) document.getElementById('tile-height').value = data.tileHeight;
+                        
+                        if (data.mappings) {
+                            mappings = {};
+                            reverseMappings = {};
+                            
+                            for (const [bitmask, spriteIndex] of Object.entries(data.mappings)) {
+                                mappings[parseInt(bitmask)] = spriteIndex;
+                                reverseMappings[spriteIndex] = parseInt(bitmask);
+                            }
+                            
+                            VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+                            renderSpriteGrid();
+                            updateProgress();
+                            updatePreview();
+                            updateShowcase();
+                            updateTestPattern();
+                            updateMissingList();
+                            saveToLocalStorage();
+                            
+                            showStatus(`Imported ${Object.keys(mappings).length} mappings`);
+                        }
+                    } catch (err) {
+                        showStatus('Error parsing JSON: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            
+            input.click();
+        }
+
+        // ============================================
+        // LOCAL STORAGE
+        // ============================================
+        
+        function saveToLocalStorage() {
+            const data = {
+                mappings: mappings,
+                tileWidth: parseInt(document.getElementById('tile-width').value),
+                tileHeight: parseInt(document.getElementById('tile-height').value)
+            };
+            localStorage.setItem('blobMapper_data', JSON.stringify(data));
+        }
+        
+        function loadFromLocalStorage() {
+            try {
+                const savedData = localStorage.getItem('blobMapper_data');
+                if (savedData) {
+                    const data = JSON.parse(savedData);
+                    
+                    if (data.tileWidth) document.getElementById('tile-width').value = data.tileWidth;
+                    if (data.tileHeight) document.getElementById('tile-height').value = data.tileHeight;
+                    
+                    if (data.mappings) {
+                        mappings = {};
+                        reverseMappings = {};
+                        
+                        for (const [bitmask, spriteIndex] of Object.entries(data.mappings)) {
+                            mappings[parseInt(bitmask)] = spriteIndex;
+                            reverseMappings[spriteIndex] = parseInt(bitmask);
+                        }
+                    }
+                }
+                
+                const spriteData = localStorage.getItem('blobMapper_spriteSheetData');
+                if (spriteData) {
+                    const img = new Image();
+                    img.onload = () => {
+                        spriteSheet = img;
+                        sliceSpriteSheet();
+                    };
+                    img.src = spriteData;
+                } else {
+                    VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+                    updateProgress();
+                    updateShowcase();
+                    updateTestPattern();
+                    updateMissingList();
+                }
+            } catch (err) {
+                console.error('Error loading from localStorage:', err);
+            }
+        }
+
+        // ============================================
+        // UTILITIES
+        // ============================================
+        
+        function showStatus(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+    </script>
+</body>
+</html>
