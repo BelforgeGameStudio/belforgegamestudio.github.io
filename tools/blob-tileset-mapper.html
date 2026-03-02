@@ -25,6 +25,7 @@
             position: relative; cursor: pointer;
             border: 3px solid #2a2a2e; border-radius: 6px;
             overflow: hidden; transition: all 150ms;
+            display: flex; flex-direction: column;
             background-color: #0d0d0f;
             background-image:
                 linear-gradient(45deg, #1c1c20 25%, transparent 25%),
@@ -227,7 +228,10 @@
             <div class="w-1/3 min-w-[320px] max-w-[380px] border-r border-border flex flex-col bg-dark-card">
                 <div class="flex-shrink-0 px-5 py-3 border-b border-border flex justify-between items-center">
                     <h2 class="font-display text-sm font-semibold text-accent">Sprite Sheet</h2>
-                    <span id="sprite-count" class="text-xs text-text-muted">No sprites loaded</span>
+                    <div class="flex items-center gap-3">
+                        <span id="sprite-count" class="text-xs text-text-muted">No sprites loaded</span>
+                        <a id="standard-layout-btn" class="text-xs text-accent cursor-pointer hover:underline hidden" onclick="applyStandardLayout()">Standard Layout</a>
+                    </div>
                 </div>
                 <div class="flex-1 overflow-y-auto p-5">
                     <!-- Drop zone -->
@@ -248,7 +252,7 @@
                     <!-- Zoom control -->
                     <div class="flex items-center gap-3 mb-4 text-xs">
                         <label class="text-text-muted uppercase tracking-wider">Zoom:</label>
-                        <input type="range" id="display-zoom" min="48" max="128" value="72" 
+                        <input type="range" id="display-zoom" min="48" max="128" value="65"
                                class="w-24 accent-accent" onchange="renderSpriteGrid()">
                     </div>
                     
@@ -261,21 +265,15 @@
             <div class="flex-1 min-w-[360px] border-r border-border flex flex-col bg-dark-card">
                 <div class="flex-shrink-0 px-5 py-3 border-b border-border flex justify-between items-center">
                     <h2 class="font-display text-sm font-semibold text-accent">Bitmask Reference (47 Values)</h2>
-                    <button class="btn btn-sm" onclick="deselectAll()">Deselect</button>
+                    <div class="flex items-center gap-3">
+                        <a class="text-xs text-accent cursor-pointer hover:underline" onclick="generateShareURL()">Share URL</a>
+                        <button class="btn btn-sm" onclick="deselectAll()">Deselect</button>
+                    </div>
                 </div>
                 <div class="flex-1 overflow-y-auto p-5">
                     <!-- Bitmask grid -->
                     <div id="bitmask-grid" class="grid gap-px" style="grid-template-columns: repeat(16, 1fr);"></div>
                     
-                    <!-- Export section -->
-                    <div class="mt-6 pt-4 border-t border-border">
-                        <div class="flex gap-2 mb-3">
-                            <button class="btn btn-primary flex-1 text-xs py-2.5" onclick="generateExport()">Generate C# Array</button>
-                            <button class="btn btn-secondary text-xs py-2.5 px-4" onclick="copyExport()">📋 Copy</button>
-                        </div>
-                        <div class="export-output" id="export-output">// Click "Generate C# Array" to see output</div>
-                    </div>
-
                     <!-- In-Context Preview (moved here from Live Validation) -->
                     <div class="mt-5 pt-4 border-t border-border">
                         <div class="flex justify-between items-center mb-2">
@@ -316,6 +314,24 @@
                         <div id="missing-list" class="bg-dark rounded-md p-2.5 text-xs text-text-muted max-h-20 overflow-y-auto">
                             <em class="text-text-dim">All mapped!</em>
                         </div>
+                    </div>
+
+                    <!-- Export section -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">📦 Export</span>
+                        </div>
+                        <div class="flex gap-2 mb-3">
+                            <select id="export-format" class="input text-xs flex-1 py-2.5">
+                                <option value="csharp">C# Array</option>
+                                <option value="unity">Unity ScriptableObject</option>
+                                <option value="godot">Godot .tres</option>
+                                <option value="json">JSON</option>
+                            </select>
+                            <button class="btn btn-primary text-xs py-2.5 px-4" onclick="generateExport()">Generate</button>
+                            <button class="btn btn-secondary text-xs py-2.5 px-4" onclick="copyExport()">📋 Copy</button>
+                        </div>
+                        <div class="export-output" id="export-output">// Select format and click "Generate"</div>
                     </div>
 
                     <!-- Interactive Sandbox -->
@@ -395,7 +411,9 @@
         let reverseMappings = {};
         let selectedSpriteIndex = null;
         let previewGrid = new Array(25).fill(false);
-        
+        let pendingURLMappings = null;
+        let variants255 = [];
+
         // ============================================
         // INITIALIZATION
         // ============================================
@@ -406,6 +424,7 @@
             initPreviewGrid();
             initShowcaseGrid();
             initTestPatternGrid();
+            loadFromURL();
             loadFromLocalStorage();
             updateMissingList();
         });
@@ -489,7 +508,7 @@
             item.appendChild(miniGrid);
 
             const label = document.createElement('div');
-            label.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:7px;line-height:1;color:#888;margin-top:1px;';
+            label.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:14px;line-height:1;color:#888;margin-top:1px;';
             label.textContent = bitmaskValue;
             item.appendChild(label);
 
@@ -502,7 +521,7 @@
 
             item.title = `Bitmask ${bitmaskValue}: ${describeBitmask(bitmaskValue)}`;
             item.addEventListener('click', () => onBitmaskClick(bitmaskValue));
-            
+
             return item;
         }
         
@@ -641,9 +660,19 @@
                 const bitmask = calculateBitmask(i, testPatternGrid, TEST_GRID_COLS, TEST_GRID_ROWS);
                 const reducedBitmask = applyDiagonalGating(bitmask);
                 usedBitmasks.add(reducedBitmask);
-                
-                const spriteIndex = mappings[reducedBitmask];
-                
+
+                cell.title = `Bitmask ${reducedBitmask}`;
+                cell.addEventListener('mouseenter', () => {
+                    const item = document.querySelector(`.bitmask-item[data-bitmask="${reducedBitmask}"]`);
+                    if (item) item.classList.add('target');
+                });
+                cell.addEventListener('mouseleave', () => {
+                    const item = document.querySelector(`.bitmask-item[data-bitmask="${reducedBitmask}"]`);
+                    if (item) item.classList.remove('target');
+                });
+
+                const spriteIndex = getSpriteForBitmask(reducedBitmask);
+
                 if (spriteIndex !== undefined) {
                     const sprite = sprites.find(s => s.index === spriteIndex);
                     if (sprite) {
@@ -671,7 +700,7 @@
         // ============================================
         // IMAGE LOADING
         // ============================================
-        
+
         function loadImage(file) {
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -734,7 +763,28 @@
             updateMissingList();
             
             document.getElementById('sprite-count').textContent = `${sprites.length} sprites loaded`;
+            document.getElementById('standard-layout-btn').classList.toggle('hidden', sprites.length < 47);
             showStatus(`Loaded ${sprites.length} sprites from ${cols}×${rows} grid`);
+
+            if (pendingURLMappings) {
+                mappings = {};
+                reverseMappings = {};
+                for (const [bitmask, spriteIndex] of Object.entries(pendingURLMappings)) {
+                    mappings[parseInt(bitmask)] = spriteIndex;
+                    reverseMappings[spriteIndex] = parseInt(bitmask);
+                }
+                variants255.forEach(idx => { reverseMappings[idx] = 255; });
+                pendingURLMappings = null;
+                VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+                renderSpriteGrid();
+                updateProgress();
+                updatePreview();
+                updateShowcase();
+                updateTestPattern();
+                updateMissingList();
+                saveToLocalStorage();
+                showStatus(`Applied ${Object.keys(mappings).length} mappings from URL`);
+            }
         }
         
         function isFullyTransparent(imageData) {
@@ -762,9 +812,8 @@
                 tile.className = 'sprite-tile';
                 tile.dataset.spriteIndex = sprite.index;
                 tile.style.width = displaySize + 'px';
-                tile.style.height = displaySize + 'px';
                 
-                if (reverseMappings[sprite.index] !== undefined) {
+                if (reverseMappings[sprite.index] !== undefined || variants255.includes(sprite.index)) {
                     tile.classList.add('assigned');
                 }
                 
@@ -781,7 +830,7 @@
                 tile.appendChild(canvas);
                 
                 const label = document.createElement('div');
-                label.className = 'absolute bottom-0 left-0 right-0 bg-black/85 text-text font-mono text-2xs font-semibold text-center py-0.5 px-1';
+                label.className = 'bg-black/85 text-text font-mono text-2xs font-semibold text-center py-0.5 px-1';
                 label.textContent = sprite.index;
                 tile.appendChild(label);
                 
@@ -808,22 +857,101 @@
         }
         
         function onBitmaskClick(bitmaskValue) {
-            if (selectedSpriteIndex === null) return;
-            
+            if (selectedSpriteIndex === null) {
+                // If no sprite selected, clicking an assigned bitmask unmaps it
+                if (mappings[bitmaskValue] !== undefined) {
+                    const spriteIndex = mappings[bitmaskValue];
+                    delete reverseMappings[spriteIndex];
+                    delete mappings[bitmaskValue];
+                    // Also clear variants for 255
+                    if (bitmaskValue === 255) {
+                        variants255.forEach(idx => delete reverseMappings[idx]);
+                        variants255 = [];
+                    }
+                    updateBitmaskItem(bitmaskValue);
+                    renderSpriteGrid();
+                    updateProgress();
+                    updatePreview();
+                    updateShowcase();
+                    updateTestPattern();
+                    updateMissingList();
+                    saveToLocalStorage();
+                    showStatus(`Unmapped bitmask ${bitmaskValue}`);
+                }
+                return;
+            }
+
+            // For bitmask 255: if already mapped, add as variant instead of replacing
+            if (bitmaskValue === 255 && mappings[255] !== undefined) {
+                // Remove sprite from any previous mapping
+                const prevBitmask = reverseMappings[selectedSpriteIndex];
+                if (prevBitmask !== undefined) {
+                    if (prevBitmask === 255) {
+                        // Already a variant of 255 — remove it
+                        variants255 = variants255.filter(idx => idx !== selectedSpriteIndex);
+                        if (mappings[255] === selectedSpriteIndex) {
+                            // Was the primary — promote first variant or unmap
+                            if (variants255.length > 0) {
+                                mappings[255] = variants255.shift();
+                            } else {
+                                delete mappings[255];
+                            }
+                        }
+                        delete reverseMappings[selectedSpriteIndex];
+                    } else {
+                        delete mappings[prevBitmask];
+                        updateBitmaskItem(prevBitmask);
+                    }
+                }
+
+                // Don't re-add if we just removed it (toggle behavior)
+                if (reverseMappings[selectedSpriteIndex] === undefined) {
+                    variants255.push(selectedSpriteIndex);
+                    reverseMappings[selectedSpriteIndex] = 255;
+                }
+
+                updateBitmaskItem(255);
+                selectedSpriteIndex = null;
+                renderSpriteGrid();
+                updateBitmaskHighlights();
+                updateProgress();
+                updatePreview();
+                updateShowcase();
+                updateTestPattern();
+                updateMissingList();
+                saveToLocalStorage();
+                const total = 1 + variants255.length;
+                showStatus(`Bitmask 255 now has ${total} variant${total > 1 ? 's' : ''}`);
+                return;
+            }
+
             const prevBitmask = reverseMappings[selectedSpriteIndex];
             if (prevBitmask !== undefined) {
-                delete mappings[prevBitmask];
-                updateBitmaskItem(prevBitmask);
+                // If was a variant of 255, remove from variants
+                if (prevBitmask === 255 && variants255.includes(selectedSpriteIndex)) {
+                    variants255 = variants255.filter(idx => idx !== selectedSpriteIndex);
+                } else if (prevBitmask === 255 && mappings[255] === selectedSpriteIndex) {
+                    // Was primary of 255 — promote first variant
+                    if (variants255.length > 0) {
+                        mappings[255] = variants255.shift();
+                    } else {
+                        delete mappings[255];
+                    }
+                    updateBitmaskItem(255);
+                } else {
+                    delete mappings[prevBitmask];
+                    updateBitmaskItem(prevBitmask);
+                }
             }
-            
+
             const prevSprite = mappings[bitmaskValue];
             if (prevSprite !== undefined) {
                 delete reverseMappings[prevSprite];
             }
-            
+
             mappings[bitmaskValue] = selectedSpriteIndex;
             reverseMappings[selectedSpriteIndex] = bitmaskValue;
-            
+
             updateBitmaskItem(bitmaskValue);
             selectedSpriteIndex = null;
             renderSpriteGrid();
@@ -834,17 +962,21 @@
             updateTestPattern();
             updateMissingList();
             saveToLocalStorage();
-            
+
             showStatus(`Mapped sprite ${mappings[bitmaskValue]} → bitmask ${bitmaskValue}`);
         }
         
         function updateBitmaskItem(bitmaskValue) {
             const item = document.querySelector(`.bitmask-item[data-bitmask="${bitmaskValue}"]`);
             if (!item) return;
-            
+
             const preview = item.querySelector('.bitmask-sprite-preview');
             const spriteIndex = mappings[bitmaskValue];
-            
+
+            // Remove existing variant badge
+            const existingBadge = item.querySelector('.variant-badge');
+            if (existingBadge) existingBadge.remove();
+
             const miniGrid = item.querySelector('.mini-grid');
             if (spriteIndex !== undefined) {
                 item.classList.add('assigned');
@@ -856,6 +988,15 @@
                     ctx.drawImage(sprite.canvas, 0, 0, 29, 29);
                     preview.style.display = 'block';
                     if (miniGrid) miniGrid.style.display = 'none';
+                }
+                // Show variant badge for bitmask 255
+                if (bitmaskValue === 255 && variants255.length > 0) {
+                    const badge = document.createElement('div');
+                    badge.className = 'variant-badge';
+                    badge.style.cssText = 'position:absolute;top:1px;left:1px;background:#e85d04;color:#fff;font-size:7px;font-weight:700;padding:0 3px;border-radius:3px;line-height:12px;';
+                    badge.textContent = `+${variants255.length}`;
+                    item.style.position = 'relative';
+                    item.appendChild(badge);
                 }
             } else {
                 item.classList.remove('assigned');
@@ -881,10 +1022,34 @@
             updateBitmaskHighlights();
         }
         
+        function applyStandardLayout() {
+            if (sprites.length < 47) {
+                showStatus(`Need at least 47 sprites (have ${sprites.length})`);
+                return;
+            }
+            mappings = {};
+            reverseMappings = {};
+            variants255 = [];
+            for (let i = 0; i < 47; i++) {
+                mappings[VALID_BITMASKS[i]] = sprites[i].index;
+                reverseMappings[sprites[i].index] = VALID_BITMASKS[i];
+            }
+            VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+            renderSpriteGrid();
+            updateProgress();
+            updatePreview();
+            updateShowcase();
+            updateTestPattern();
+            updateMissingList();
+            saveToLocalStorage();
+            showStatus('Applied standard 47-tile layout');
+        }
+
         function clearAllMappings() {
             if (confirm('Clear all mappings? This cannot be undone.')) {
                 mappings = {};
                 reverseMappings = {};
+                variants255 = [];
                 VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
                 renderSpriteGrid();
                 updateProgress();
@@ -1032,7 +1197,17 @@
             previewGrid = previewGrid.map(() => Math.random() > 0.5);
             updatePreview();
         }
-        
+
+        function getSpriteForBitmask(bitmaskValue) {
+            const primary = mappings[bitmaskValue];
+            if (primary === undefined) return undefined;
+            if (bitmaskValue === 255 && variants255.length > 0) {
+                const all = [primary, ...variants255];
+                return all[Math.floor(Math.random() * all.length)];
+            }
+            return primary;
+        }
+
         function updatePreview() {
             const cells = document.querySelectorAll('#preview-grid .sandbox-cell');
             
@@ -1045,7 +1220,7 @@
                 cell.classList.add('active');
                 const bitmask = calculateBitmask(i, previewGrid, 5);
                 const reducedBitmask = applyDiagonalGating(bitmask);
-                const spriteIndex = mappings[reducedBitmask];
+                const spriteIndex = getSpriteForBitmask(reducedBitmask);
                 
                 if (spriteIndex !== undefined) {
                     const sprite = sprites.find(s => s.index === spriteIndex);
@@ -1139,43 +1314,190 @@
         // ============================================
         
         function generateExport() {
+            const format = document.getElementById('export-format').value;
+            switch (format) {
+                case 'csharp': generateCSharpExport(); break;
+                case 'unity': generateUnityExport(); break;
+                case 'godot': generateGodotExport(); break;
+                case 'json': generateJSONExport(); break;
+            }
+        }
+
+        function generateCSharpExport() {
             if (sprites.length === 0) {
                 document.getElementById('export-output').textContent = '// No sprites loaded';
                 return;
             }
-            
+
             const lines = ['// Blob tileset bitmask mapping', '// Generated by Belforge Blob Tileset Mapper', ''];
             lines.push(`public const int TILES_PER_VARIANT = ${sprites.length};`);
             lines.push('');
             lines.push('// Maps sprite sheet position (index) to bitmask value');
             lines.push('public static readonly int[] BitmaskByPosition = {');
-            
+
             const maxIndex = Math.max(...sprites.map(s => s.index));
-            
+
             for (let i = 0; i <= maxIndex; i++) {
                 const bitmask = reverseMappings[i];
                 const sprite = sprites.find(s => s.index === i);
-                
+
                 if (sprite) {
                     const value = bitmask !== undefined ? bitmask : -1;
                     const comment = bitmask !== undefined ? describeBitmask(bitmask) : 'UNMAPPED';
                     lines.push(`    ${value.toString().padStart(3)},  // pos ${i.toString().padStart(2)}: ${comment}`);
                 }
             }
-            
+
             lines.push('};');
             lines.push('');
             lines.push('// Maps bitmask value to sprite sheet position');
             lines.push('public static readonly Dictionary<int, int> PositionByBitmask = new Dictionary<int, int> {');
-            
+
             const sortedMappings = Object.entries(mappings).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
             for (const [bitmask, spriteIndex] of sortedMappings) {
                 lines.push(`    { ${bitmask.toString().padStart(3)}, ${spriteIndex.toString().padStart(2)} },  // ${describeBitmask(parseInt(bitmask))}`);
             }
-            
+
             lines.push('};');
-            
+
+            if (variants255.length > 0) {
+                lines.push('');
+                lines.push('// Variant sprite positions for bitmask 255 (all neighbors)');
+                lines.push(`public static readonly int[] Variants255 = { ${[mappings[255], ...variants255].join(', ')} };`);
+            }
+
             document.getElementById('export-output').textContent = lines.join('\n');
+        }
+
+        function generateUnityExport() {
+            if (sprites.length === 0) {
+                document.getElementById('export-output').textContent = '// No sprites loaded';
+                return;
+            }
+
+            const tw = document.getElementById('tile-width').value;
+            const th = document.getElementById('tile-height').value;
+            const sortedMappings = Object.entries(mappings).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+
+            const lines = [
+                '// Generated by Belforge Blob Tileset Mapper',
+                '// Save as BlobTilesetData.cs in your Unity project',
+                '',
+                'using UnityEngine;',
+                'using System.Collections.Generic;',
+                '',
+                '[CreateAssetMenu(fileName = "BlobTileset", menuName = "Tileset/Blob Tileset Data")]',
+                'public class BlobTilesetData : ScriptableObject',
+                '{',
+                `    public int tileWidth = ${tw};`,
+                `    public int tileHeight = ${th};`,
+                '',
+                '    // Bitmask value → sprite sheet index',
+                '    public static readonly Dictionary<int, int> BitmaskToPosition = new Dictionary<int, int>',
+                '    {'
+            ];
+
+            for (const [bitmask, spriteIndex] of sortedMappings) {
+                lines.push(`        {{ ${bitmask.toString().padStart(3)}, ${spriteIndex.toString().padStart(2)} }},  // ${describeBitmask(parseInt(bitmask))}`);
+            }
+
+            lines.push('    };');
+            lines.push('');
+            lines.push('    // Sprite sheet index → bitmask value (-1 = unmapped)');
+            lines.push('    public static readonly int[] PositionToBitmask = {');
+
+            const maxIndex = Math.max(...sprites.map(s => s.index));
+            for (let i = 0; i <= maxIndex; i++) {
+                const bitmask = reverseMappings[i];
+                const sprite = sprites.find(s => s.index === i);
+                if (sprite) {
+                    const value = bitmask !== undefined ? bitmask : -1;
+                    lines.push(`        ${value.toString().padStart(3)},  // pos ${i}`);
+                }
+            }
+
+            lines.push('    };');
+
+            if (variants255.length > 0) {
+                lines.push('');
+                lines.push('    // Variant positions for bitmask 255 (all neighbors)');
+                lines.push(`    public static readonly int[] Variants255 = { ${[mappings[255], ...variants255].join(', ')} };`);
+            }
+
+            lines.push('}');
+            document.getElementById('export-output').textContent = lines.join('\n');
+        }
+
+        function generateGodotExport() {
+            if (sprites.length === 0) {
+                document.getElementById('export-output').textContent = '# No sprites loaded';
+                return;
+            }
+
+            const tw = document.getElementById('tile-width').value;
+            const th = document.getElementById('tile-height').value;
+            const sortedMappings = Object.entries(mappings).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+
+            const lines = [
+                '# Generated by Belforge Blob Tileset Mapper',
+                `# Tile size: ${tw}x${th}`,
+                '# Save as blob_tileset_data.tres in your Godot project',
+                '# Requires a matching Resource script: blob_tileset_data.gd',
+                '',
+                '[gd_resource type="Resource" format=3]',
+                '',
+                '[resource]',
+                `tile_width = ${tw}`,
+                `tile_height = ${th}`,
+                ''
+            ];
+
+            // Bitmask → position dictionary
+            lines.push('# Bitmask value → sprite sheet index');
+            lines.push('bitmask_to_position = {');
+            for (const [bitmask, spriteIndex] of sortedMappings) {
+                lines.push(`  ${bitmask}: ${spriteIndex},`);
+            }
+            lines.push('}');
+            lines.push('');
+
+            // Position → bitmask array
+            lines.push('# Sprite sheet index → bitmask value (-1 = unmapped)');
+            const maxIndex = Math.max(...sprites.map(s => s.index));
+            const posArray = [];
+            for (let i = 0; i <= maxIndex; i++) {
+                const sprite = sprites.find(s => s.index === i);
+                if (sprite) {
+                    const bitmask = reverseMappings[i];
+                    posArray.push(bitmask !== undefined ? bitmask : -1);
+                }
+            }
+            lines.push(`position_to_bitmask = [${posArray.join(', ')}]`);
+
+            if (variants255.length > 0) {
+                lines.push('');
+                lines.push('# Variant positions for bitmask 255 (all neighbors)');
+                lines.push(`variants_255 = [${[mappings[255], ...variants255].join(', ')}]`);
+            }
+
+            document.getElementById('export-output').textContent = lines.join('\n');
+        }
+
+        function generateJSONExport() {
+            if (sprites.length === 0) {
+                document.getElementById('export-output').textContent = '// No sprites loaded';
+                return;
+            }
+
+            const data = {
+                mappings: mappings,
+                variants255: variants255,
+                tileWidth: parseInt(document.getElementById('tile-width').value),
+                tileHeight: parseInt(document.getElementById('tile-height').value),
+                exportedAt: new Date().toISOString()
+            };
+
+            document.getElementById('export-output').textContent = JSON.stringify(data, null, 2);
         }
         
         function describeBitmask(bitmask) {
@@ -1205,6 +1527,7 @@
         function exportJSON() {
             const data = {
                 mappings: mappings,
+                variants255: variants255,
                 tileWidth: parseInt(document.getElementById('tile-width').value),
                 tileHeight: parseInt(document.getElementById('tile-height').value),
                 exportedAt: new Date().toISOString()
@@ -1243,12 +1566,18 @@
                         if (data.mappings) {
                             mappings = {};
                             reverseMappings = {};
-                            
+                            variants255 = [];
+
                             for (const [bitmask, spriteIndex] of Object.entries(data.mappings)) {
                                 mappings[parseInt(bitmask)] = spriteIndex;
                                 reverseMappings[spriteIndex] = parseInt(bitmask);
                             }
-                            
+
+                            if (Array.isArray(data.variants255)) {
+                                variants255 = data.variants255;
+                                variants255.forEach(idx => { reverseMappings[idx] = 255; });
+                            }
+
                             VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
                             renderSpriteGrid();
                             updateProgress();
@@ -1257,7 +1586,7 @@
                             updateTestPattern();
                             updateMissingList();
                             saveToLocalStorage();
-                            
+
                             showStatus(`Imported ${Object.keys(mappings).length} mappings`);
                         }
                     } catch (err) {
@@ -1271,38 +1600,102 @@
         }
 
         // ============================================
+        // URL SHARING
+        // ============================================
+
+        function generateShareURL() {
+            const entries = Object.entries(mappings);
+            if (entries.length === 0) {
+                showStatus('No mappings to share');
+                return;
+            }
+
+            const m = entries.map(([b, s]) => `${b}:${s}`).join(',');
+            const tw = document.getElementById('tile-width').value;
+            const th = document.getElementById('tile-height').value;
+
+            const url = new URL(window.location.href.split('?')[0]);
+            url.searchParams.set('m', m);
+            url.searchParams.set('tw', tw);
+            url.searchParams.set('th', th);
+            if (variants255.length > 0) {
+                url.searchParams.set('v255', variants255.join(','));
+            }
+
+            history.replaceState(null, '', url);
+            navigator.clipboard.writeText(url.toString()).then(() => {
+                showStatus(`Copied share URL with ${entries.length} mappings`);
+            });
+        }
+
+        function loadFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            const m = params.get('m');
+            if (!m) return;
+
+            const tw = params.get('tw');
+            const th = params.get('th');
+            if (tw) document.getElementById('tile-width').value = tw;
+            if (th) document.getElementById('tile-height').value = th;
+
+            const parsed = {};
+            for (const pair of m.split(',')) {
+                const [bitmask, spriteIndex] = pair.split(':').map(Number);
+                if (!isNaN(bitmask) && !isNaN(spriteIndex)) {
+                    parsed[bitmask] = spriteIndex;
+                }
+            }
+
+            const v255 = params.get('v255');
+            if (v255) {
+                variants255 = v255.split(',').map(Number).filter(n => !isNaN(n));
+            }
+
+            if (Object.keys(parsed).length > 0) {
+                pendingURLMappings = parsed;
+                showStatus(`URL contains ${Object.keys(parsed).length} mappings — upload a sprite sheet to apply`);
+            }
+        }
+
+        // ============================================
         // LOCAL STORAGE
         // ============================================
         
         function saveToLocalStorage() {
             const data = {
                 mappings: mappings,
+                variants255: variants255,
                 tileWidth: parseInt(document.getElementById('tile-width').value),
                 tileHeight: parseInt(document.getElementById('tile-height').value)
             };
             localStorage.setItem('blobMapper_data', JSON.stringify(data));
         }
-        
+
         function loadFromLocalStorage() {
             try {
                 const savedData = localStorage.getItem('blobMapper_data');
                 if (savedData) {
                     const data = JSON.parse(savedData);
-                    
+
                     if (data.tileWidth) document.getElementById('tile-width').value = data.tileWidth;
                     if (data.tileHeight) document.getElementById('tile-height').value = data.tileHeight;
-                    
+
                     if (data.mappings) {
                         mappings = {};
                         reverseMappings = {};
-                        
+
                         for (const [bitmask, spriteIndex] of Object.entries(data.mappings)) {
                             mappings[parseInt(bitmask)] = spriteIndex;
                             reverseMappings[spriteIndex] = parseInt(bitmask);
                         }
+
+                        if (Array.isArray(data.variants255)) {
+                            variants255 = data.variants255;
+                            variants255.forEach(idx => { reverseMappings[idx] = 255; });
+                        }
                     }
                 }
-                
+
                 const spriteData = localStorage.getItem('blobMapper_spriteSheetData');
                 if (spriteData) {
                     const img = new Image();
