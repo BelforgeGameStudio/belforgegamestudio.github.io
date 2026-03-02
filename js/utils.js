@@ -683,6 +683,103 @@ const BelforgeUtils = (function() {
     }
 
     // ==========================================================================
+    // Blob Tileset Helpers (shared bitmask utilities)
+    // ==========================================================================
+
+    // Directional bit flags (8-bit bitmask for neighbor presence)
+    const N = 1, NE = 2, E = 4, SE = 8, S = 16, SW = 32, W = 64, NW = 128;
+
+    const DIR_NAMES = { 1: 'N', 2: 'NE', 4: 'E', 8: 'SE', 16: 'S', 32: 'SW', 64: 'W', 128: 'NW' };
+
+    // Maps 3x3 mini-grid cell positions to bit flags
+    const CELL_TO_BIT = { 0: NW, 1: N, 2: NE, 3: W, 4: 0, 5: E, 6: SW, 7: S, 8: SE };
+    const BIT_TO_CELL = { [N]: 1, [NE]: 2, [E]: 5, [SE]: 8, [S]: 7, [SW]: 6, [W]: 3, [NW]: 0 };
+
+    // Cardinal neighbors required for each diagonal to be relevant
+    const DIAGONAL_REQUIREMENTS = { [NE]: [N, E], [SE]: [S, E], [SW]: [S, W], [NW]: [N, W] };
+
+    // The 47 unique reduced bitmask values (after diagonal gating)
+    const VALID_BITMASKS = [
+        0, 1, 4, 5, 7, 16, 17, 20, 21, 23, 28, 29, 31, 64, 65, 68, 69, 71, 80, 81,
+        84, 85, 87, 92, 93, 95, 112, 113, 116, 117, 119, 124, 125, 127, 193, 197,
+        199, 209, 213, 215, 221, 223, 241, 245, 247, 253, 255
+    ];
+
+    /**
+     * Compute 8-bit bitmask for a cell in a boolean grid based on its neighbors.
+     */
+    function calculateBitmask(index, grid, gridCols, gridRows) {
+        const cols = gridCols;
+        const rows = gridRows || gridCols;
+        const x = index % cols;
+        const y = Math.floor(index / cols);
+
+        let bitmask = 0;
+
+        const neighbors = [
+            { dx: 0, dy: -1, bit: N },
+            { dx: 1, dy: -1, bit: NE },
+            { dx: 1, dy: 0, bit: E },
+            { dx: 1, dy: 1, bit: SE },
+            { dx: 0, dy: 1, bit: S },
+            { dx: -1, dy: 1, bit: SW },
+            { dx: -1, dy: 0, bit: W },
+            { dx: -1, dy: -1, bit: NW }
+        ];
+
+        for (const { dx, dy, bit } of neighbors) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                const ni = ny * cols + nx;
+                if (grid[ni]) {
+                    bitmask |= bit;
+                }
+            }
+        }
+
+        return bitmask;
+    }
+
+    /**
+     * Zero diagonal bits when required cardinal neighbors are missing.
+     */
+    function applyDiagonalGating(bitmask) {
+        let result = bitmask;
+        if (!((bitmask & N) && (bitmask & E))) result &= ~NE;
+        if (!((bitmask & S) && (bitmask & E))) result &= ~SE;
+        if (!((bitmask & S) && (bitmask & W))) result &= ~SW;
+        if (!((bitmask & N) && (bitmask & W))) result &= ~NW;
+        return result;
+    }
+
+    /**
+     * Human-readable description of a bitmask value.
+     */
+    function describeBitmask(bitmask) {
+        if (bitmask === 0) return 'isolated';
+        if (bitmask === 255) return 'all neighbors';
+        const dirs = [];
+        for (const [bit, name] of Object.entries(DIR_NAMES)) {
+            if (bitmask & parseInt(bit)) {
+                dirs.push(name);
+            }
+        }
+        return dirs.join('+');
+    }
+
+    /**
+     * Check if an ImageData is fully transparent (all alpha = 0).
+     */
+    function isFullyTransparent(imageData) {
+        const data = imageData.data;
+        for (let i = 3; i < data.length; i += 4) {
+            if (data[i] > 0) return false;
+        }
+        return true;
+    }
+
+    // ==========================================================================
     // Public API
     // ==========================================================================
 
@@ -716,7 +813,19 @@ const BelforgeUtils = (function() {
         
         // Timing
         debounce,
-        throttle
+        throttle,
+
+        // Blob Tileset Bitmask Helpers
+        N, NE, E, SE, S, SW, W, NW,
+        DIR_NAMES,
+        CELL_TO_BIT,
+        BIT_TO_CELL,
+        DIAGONAL_REQUIREMENTS,
+        VALID_BITMASKS,
+        calculateBitmask,
+        applyDiagonalGating,
+        describeBitmask,
+        isFullyTransparent
     };
 
 })();
@@ -740,4 +849,23 @@ if (typeof window !== 'undefined') {
     window.sanitizeFilename = window.sanitizeFilename || BelforgeUtils.sanitizeFilename;
     window.copyToClipboard = window.copyToClipboard || BelforgeUtils.copyToClipboard;
     window.downloadFile = window.downloadFile || BelforgeUtils.downloadFile;
+
+    // Blob tileset bitmask helpers
+    window.N = window.N || BelforgeUtils.N;
+    window.NE = window.NE || BelforgeUtils.NE;
+    window.E = window.E || BelforgeUtils.E;
+    window.SE = window.SE || BelforgeUtils.SE;
+    window.S = window.S || BelforgeUtils.S;
+    window.SW = window.SW || BelforgeUtils.SW;
+    window.W = window.W || BelforgeUtils.W;
+    window.NW = window.NW || BelforgeUtils.NW;
+    window.DIR_NAMES = window.DIR_NAMES || BelforgeUtils.DIR_NAMES;
+    window.CELL_TO_BIT = window.CELL_TO_BIT || BelforgeUtils.CELL_TO_BIT;
+    window.BIT_TO_CELL = window.BIT_TO_CELL || BelforgeUtils.BIT_TO_CELL;
+    window.DIAGONAL_REQUIREMENTS = window.DIAGONAL_REQUIREMENTS || BelforgeUtils.DIAGONAL_REQUIREMENTS;
+    window.VALID_BITMASKS = window.VALID_BITMASKS || BelforgeUtils.VALID_BITMASKS;
+    window.calculateBitmask = window.calculateBitmask || BelforgeUtils.calculateBitmask;
+    window.applyDiagonalGating = window.applyDiagonalGating || BelforgeUtils.applyDiagonalGating;
+    window.describeBitmask = window.describeBitmask || BelforgeUtils.describeBitmask;
+    window.isFullyTransparent = window.isFullyTransparent || BelforgeUtils.isFullyTransparent;
 }
