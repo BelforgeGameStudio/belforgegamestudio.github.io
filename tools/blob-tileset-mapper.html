@@ -94,12 +94,12 @@
         .test-cell.unmapped { background: rgba(243,156,18,.2); }
         .test-cell canvas { image-rendering: pixelated; width: 100%; height: 100%; }
 
-        /* --- Sandbox Grid (5×5) --- */
+        /* --- Sandbox Grid (7×7) --- */
         .sandbox-grid {
             display: grid; gap: 1px; background-color: #2a2a2e;
             border-radius: 6px; overflow: hidden; width: fit-content;
-            grid-template-columns: repeat(5, 32px);
-            grid-template-rows: repeat(5, 32px);
+            grid-template-columns: repeat(7, 32px);
+            grid-template-rows: repeat(7, 32px);
         }
         .sandbox-cell {
             width: 2rem; height: 2rem; background-color: #0d0d0f;
@@ -270,21 +270,21 @@
                         <button class="btn btn-sm" onclick="deselectAll()">Deselect</button>
                     </div>
                 </div>
-                <div class="flex-1 overflow-y-auto p-5">
+                <div class="flex-1 overflow-y-auto" style="padding:1rem 1.25rem">
                     <!-- Bitmask grid -->
                     <div id="bitmask-grid" class="grid gap-px" style="grid-template-columns: repeat(16, 1fr);"></div>
                     
                     <!-- In-Context Preview (moved here from Live Validation) -->
-                    <div class="mt-5 pt-4 border-t border-border">
+                    <div class="pt-4 border-border">
                         <div class="flex justify-between items-center mb-2">
                             <span class="text-xs text-accent font-semibold">🧪 In-Context Preview</span>
+                            <span class="text-2xs text-text-dim">Click to toggle. <span id="pattern-coverage">0/47 bitmasks used</span></span>
                             <div class="flex gap-1">
                                 <button class="btn btn-sm text-2xs py-1 px-2" onclick="resetTestPattern()">Reset</button>
                                 <button class="btn btn-sm text-2xs py-1 px-2" onclick="clearTestPattern()">Clear</button>
                                 <button class="btn btn-sm text-2xs py-1 px-2" onclick="fillTestPattern()">Fill</button>
                             </div>
                         </div>
-                        <p class="text-2xs text-text-dim mb-2">Click to toggle. <span id="pattern-coverage">0/47 bitmasks used</span></p>
                         <div class="test-pattern-grid" id="test-pattern-grid"></div>
                     </div>
                 </div>
@@ -410,7 +410,7 @@
         let mappings = {};
         let reverseMappings = {};
         let selectedSpriteIndex = null;
-        let previewGrid = new Array(25).fill(false);
+        let previewGrid = new Array(49).fill(false);
         let pendingURLMappings = null;
         let variants255 = [];
 
@@ -462,11 +462,21 @@
         function initBitmaskGrid() {
             const grid = document.getElementById('bitmask-grid');
             grid.innerHTML = '';
-            
+
             VALID_BITMASKS.forEach(value => {
                 const item = createBitmaskItem(value);
                 grid.appendChild(item);
             });
+
+            // 48th slot: variant shortcut for bitmask 255
+            const slot = document.createElement('div');
+            slot.className = 'bitmask-item';
+            slot.id = 'variant-slot';
+            slot.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;';
+            slot.title = 'Select a sprite and click to add a variant for bitmask 255';
+            slot.innerHTML = '<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:#666;">+V</div>';
+            slot.addEventListener('click', onVariantSlotClick);
+            grid.appendChild(slot);
         }
         
         function createBitmaskItem(bitmaskValue) {
@@ -529,7 +539,7 @@
             const grid = document.getElementById('preview-grid');
             grid.innerHTML = '';
             
-            for (let i = 0; i < 25; i++) {
+            for (let i = 0; i < 49; i++) {
                 const cell = document.createElement('div');
                 cell.className = 'sandbox-cell';
                 cell.dataset.index = i;
@@ -776,6 +786,7 @@
                 variants255.forEach(idx => { reverseMappings[idx] = 255; });
                 pendingURLMappings = null;
                 VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+                updateVariantSlot();
                 renderSpriteGrid();
                 updateProgress();
                 updatePreview();
@@ -869,6 +880,7 @@
                         variants255 = [];
                     }
                     updateBitmaskItem(bitmaskValue);
+                    updateVariantSlot();
                     renderSpriteGrid();
                     updateProgress();
                     updatePreview();
@@ -911,6 +923,7 @@
                 }
 
                 updateBitmaskItem(255);
+                updateVariantSlot();
                 selectedSpriteIndex = null;
                 renderSpriteGrid();
                 updateBitmaskHighlights();
@@ -938,6 +951,7 @@
                         delete mappings[255];
                     }
                     updateBitmaskItem(255);
+                    updateVariantSlot();
                 } else {
                     delete mappings[prevBitmask];
                     updateBitmaskItem(prevBitmask);
@@ -1005,6 +1019,43 @@
             }
         }
         
+        function updateVariantSlot() {
+            const slot = document.getElementById('variant-slot');
+            if (!slot) return;
+
+            const count = variants255.length;
+            const has255 = mappings[255] !== undefined;
+
+            if (has255 && count > 0) {
+                slot.innerHTML = `<div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:#e85d04;">+${count}</div>`;
+                slot.title = `${count} variant${count > 1 ? 's' : ''} for bitmask 255. Click with a sprite selected to add more.`;
+            } else if (has255) {
+                slot.innerHTML = '<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:#888;">+V</div>';
+                slot.title = 'Select a sprite and click to add a variant for bitmask 255';
+            } else {
+                slot.innerHTML = '<div style="font-family:JetBrains Mono,monospace;font-size:14px;color:#444;">+V</div>';
+                slot.title = 'Map bitmask 255 first, then add variants here';
+            }
+        }
+
+        function onVariantSlotClick() {
+            if (selectedSpriteIndex === null) {
+                if (variants255.length > 0) {
+                    showStatus(`Bitmask 255 has ${1 + variants255.length} variants. Select a sprite to add more.`);
+                } else {
+                    showStatus('Select a sprite first, then click here to add a 255 variant');
+                }
+                return;
+            }
+            if (mappings[255] === undefined) {
+                showStatus('Map bitmask 255 first before adding variants');
+                return;
+            }
+            // Delegate to the existing 255 variant logic
+            onBitmaskClick(255);
+            updateVariantSlot();
+        }
+
         function updateBitmaskHighlights() {
             document.querySelectorAll('.bitmask-item').forEach(item => {
                 item.classList.remove('target');
@@ -1035,6 +1086,7 @@
                 reverseMappings[sprites[i].index] = VALID_BITMASKS[i];
             }
             VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+            updateVariantSlot();
             renderSpriteGrid();
             updateProgress();
             updatePreview();
@@ -1051,6 +1103,7 @@
                 reverseMappings = {};
                 variants255 = [];
                 VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+                updateVariantSlot();
                 renderSpriteGrid();
                 updateProgress();
                 updatePreview();
@@ -1218,7 +1271,7 @@
                 if (!previewGrid[i]) return;
                 
                 cell.classList.add('active');
-                const bitmask = calculateBitmask(i, previewGrid, 5);
+                const bitmask = calculateBitmask(i, previewGrid, 7);
                 const reducedBitmask = applyDiagonalGating(bitmask);
                 const spriteIndex = getSpriteForBitmask(reducedBitmask);
                 
@@ -1579,6 +1632,7 @@
                             }
 
                             VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+                            updateVariantSlot();
                             renderSpriteGrid();
                             updateProgress();
                             updatePreview();
@@ -1706,6 +1760,7 @@
                     img.src = spriteData;
                 } else {
                     VALID_BITMASKS.forEach(v => updateBitmaskItem(v));
+                    updateVariantSlot();
                     updateProgress();
                     updateShowcase();
                     updateTestPattern();
