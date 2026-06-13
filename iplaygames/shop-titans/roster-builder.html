@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>T16 Roster &amp; Party Builder</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" color="#3b82f6">
+  <link rel="stylesheet" href="../css/tailwind.css">
+  <script src="/js/tailwindcss.js"></script>
+  <!-- Page-specific Shop Titans theme (not the shared tailwind-theme.js) -->
+  <script src="_js/roster-theme.js"></script>
+</head>
+<body class="min-h-screen bg-background text-textPrimary text-sm">
+  <!-- Sticky panel tabs (right edge) — analysis/build group up top -->
+  <button id="openHealthBtn"
+    class="fixed right-0 top-24 z-30 bg-accent text-white text-xs font-semibold px-3 py-2 rounded-l-lg shadow-md hover:bg-accentLight transition-colors">
+    Roster Health
+  </button>
+  <button id="openStatsBtn"
+    class="fixed right-0 top-36 z-30 bg-accent text-white text-xs font-semibold px-3 py-2 rounded-l-lg shadow-md hover:bg-accentLight transition-colors">
+    Party Stats
+  </button>
+  <button id="openDefaultsBtn"
+    class="fixed right-0 top-48 z-30 bg-accent text-white text-xs font-semibold px-3 py-2 rounded-l-lg shadow-md hover:bg-accentLight transition-colors">
+    Default Stats
+  </button>
+  <button id="openPriorityBtn"
+    class="fixed right-0 top-60 z-30 bg-accent text-white text-xs font-semibold px-3 py-2 rounded-l-lg shadow-md hover:bg-accentLight transition-colors">
+    Class Priority
+  </button>
+  <button id="openFiltersBtn"
+    class="fixed right-0 top-72 z-30 bg-accent text-white text-xs font-semibold px-3 py-2 rounded-l-lg shadow-md hover:bg-accentLight transition-colors">
+    Filters
+  </button>
+  <!-- Data group — positioned lower, separated from the panels above -->
+  <button id="openShareBtn"
+    class="fixed right-0 top-[384px] z-30 bg-accent text-white text-xs font-semibold px-3 py-2 rounded-l-lg shadow-md hover:bg-accentLight transition-colors">
+    Share/Bookmark
+  </button>
+  <button id="openDownloadBtn"
+    class="fixed right-0 top-[432px] z-30 bg-accent text-white text-xs font-semibold px-3 py-2 rounded-l-lg shadow-md hover:bg-accentLight transition-colors">
+    Download Data
+  </button>
+  <button id="openUploadBtn"
+    class="fixed right-0 top-[480px] z-30 bg-accent text-white text-xs font-semibold px-3 py-2 rounded-l-lg shadow-md hover:bg-accentLight transition-colors">
+    Upload Data
+  </button>
+
+  <div class="max-w-[100rem] mx-auto p-4 md:p-8 space-y-6">
+    <!-- All dynamic content (parties, roster, add tiles) is
+         rendered into #app by roster-builder.js -->
+    <div id="app" class="space-y-4"></div>
+  </div>
+
+  <!-- Roster Health offcanvas panel (slides in from the right, closed on load) -->
+  <div id="healthBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="healthPanel"
+    class="fixed right-0 top-0 bottom-0 w-[400px] z-50 bg-surface border-l border-borderc transform translate-x-full transition-transform duration-300 flex flex-col">
+    <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-textPrimary">Roster Health</h2>
+        <p class="text-xs text-textSecondary mt-0.5">Aim for 3+ heroes per element. Dark / light / earth are the current T16 barrier priority.</p>
+      </div>
+      <button id="healthClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+    </header>
+    <div id="healthPanelBody" class="overflow-y-auto p-4 flex-1 space-y-2"></div>
+  </div>
+
+  <!-- Hero Stats & Survivability offcanvas panel (slides in from the right, closed on load) -->
+  <div id="statsBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="statsPanel"
+    class="fixed right-0 top-0 bottom-0 w-[760px] max-w-full z-50 bg-surface border-l border-borderc transform translate-x-full transition-transform duration-300 flex flex-col">
+    <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-textPrimary">Party Stats</h2>
+        <p class="text-xs text-textSecondary mt-0.5">Per-hero overrides, champion power, and per-party clear speed.</p>
+      </div>
+      <button id="statsClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+    </header>
+    <div id="statsPanelBody" class="overflow-y-auto p-4 flex-1 space-y-2"></div>
+  </div>
+
+  <!-- Default Stats (per-class averages) offcanvas panel (slides in from the right, closed on load) -->
+  <div id="defaultsBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="defaultsPanel"
+    class="fixed right-0 top-0 bottom-0 w-[840px] max-w-full z-50 bg-surface border-l border-borderc transform translate-x-full transition-transform duration-300 flex flex-col">
+    <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-textPrimary">Default Stats</h2>
+        <p class="text-xs text-textSecondary mt-0.5">Per-class averages — the defaults a hero inherits unless overridden in Party Stats.</p>
+      </div>
+      <button id="defaultsClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+    </header>
+    <div id="defaultsPanelBody" class="overflow-y-auto p-4 flex-1 space-y-2"></div>
+  </div>
+
+  <!-- Class Priority offcanvas panel (slides in from the right, closed on load) -->
+  <div id="priorityBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="priorityPanel"
+    class="fixed right-0 top-0 bottom-0 w-[360px] max-w-full z-50 bg-surface border-l border-borderc transform translate-x-full transition-transform duration-300 flex flex-col">
+    <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-textPrimary">Class Priority</h2>
+        <p class="text-xs text-textSecondary mt-0.5">Higher = preferred. Reorder with ▲▼; feeds the suggestions engine.</p>
+      </div>
+      <button id="priorityClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+    </header>
+    <div id="priorityPanelBody" class="overflow-y-auto p-4 flex-1 space-y-1.5"></div>
+  </div>
+
+  <!-- Filters offcanvas panel (slides in from the right, closed on load) -->
+  <div id="filtersBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="filtersPanel"
+    class="fixed right-0 top-0 bottom-0 w-[480px] max-w-full z-50 bg-surface border-l border-borderc transform translate-x-full transition-transform duration-300 flex flex-col">
+    <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-textPrimary">Filters</h2>
+        <p class="text-xs text-textSecondary mt-0.5">Constrain Auto Sort, Top-up Roster, and Recommended.</p>
+      </div>
+      <button id="filtersClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+    </header>
+    <div id="filtersPanelBody" class="overflow-y-auto p-4 flex-1 space-y-2"></div>
+  </div>
+
+  <!-- Generic alert/notice centered overlay (replaces native alert(); top-most, closed on load) -->
+  <div id="alertBackdrop"
+    class="fixed inset-0 bg-black/40 z-[65] opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="alertModal"
+    class="fixed inset-0 z-[70] flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-surface border-2 border-borderc rounded-2xl w-[400px] max-w-full p-5 shadow-xl">
+      <div id="alertBody" class="text-sm text-textPrimary leading-relaxed whitespace-pre-line mb-4"></div>
+      <button id="alertOk" class="btn-primary w-full">OK</button>
+    </div>
+  </div>
+
+  <!-- Share centered overlay (fade in, closed on load) -->
+  <div id="shareBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="shareModal"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-surface border-2 border-borderc rounded-2xl w-[460px] max-w-full p-5 shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold text-textPrimary">Share or bookmark this link</h2>
+        <button id="shareClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+      </div>
+      <textarea id="shareText" readonly spellcheck="false"
+        class="w-full h-24 p-3 rounded-xl bg-hoverBg border border-borderc text-textPrimary font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-accent"></textarea>
+      <button id="shareCopyBtn" class="btn-primary mt-3 w-full">Copy Link</button>
+    </div>
+  </div>
+
+  <!-- Download offcanvas panel (slides in from the right, closed on load) -->
+  <div id="downloadBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="downloadPanel"
+    class="fixed right-0 top-0 bottom-0 w-[400px] max-w-full z-50 bg-surface border-l border-borderc transform translate-x-full transition-transform duration-300 flex flex-col">
+    <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-textPrimary">Download</h2>
+        <p class="text-xs text-textSecondary mt-0.5">Save your data as a file.</p>
+      </div>
+      <button id="downloadClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+    </header>
+    <div class="overflow-y-auto p-4 flex-1 flex flex-col gap-2">
+      <p class="text-[10px] uppercase tracking-wider text-textSecondary mt-1">JSON</p>
+      <button id="dlRosterJson" class="btn-white text-left">Your Roster (JSON)</button>
+      <button id="dlDefaultsJson" class="btn-white text-left">Default Stats (JSON)</button>
+      <button id="dlAllJson" class="btn-white text-left">All Stats (JSON)</button>
+      <p class="text-[10px] uppercase tracking-wider text-textSecondary mt-2">CSV</p>
+      <button id="dlRosterCsv" class="btn-white text-left">Your Roster (CSV)</button>
+      <button id="dlDefaultsCsv" class="btn-white text-left">Default Stats (CSV)</button>
+      <button id="dlAllCsv" class="btn-white text-left">All Stats (CSV)</button>
+      <span id="downloadStatus" class="text-xs text-textSecondary mt-1"></span>
+    </div>
+  </div>
+
+  <!-- Upload Data offcanvas panel (slides in from the right, closed on load) -->
+  <div id="uploadBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="uploadPanel"
+    class="fixed right-0 top-0 bottom-0 w-[400px] max-w-full z-50 bg-surface border-l border-borderc transform translate-x-full transition-transform duration-300 flex flex-col">
+    <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-textPrimary">Upload Data</h2>
+        <p class="text-xs text-textSecondary mt-0.5">Paste JSON/CSV or choose a file. Roster, Default Stats, or All are auto-detected.</p>
+      </div>
+      <button id="uploadClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+    </header>
+    <div class="overflow-y-auto p-4 flex-1 flex flex-col gap-3">
+      <input id="uploadFile" type="file" accept=".json,.csv,text/csv,application/json"
+        class="text-xs text-textSecondary file:btn-white file:mr-2 file:cursor-pointer">
+      <textarea id="uploadText" spellcheck="false"
+        class="w-full flex-1 min-h-[260px] p-3 rounded-xl bg-hoverBg border border-borderc text-textPrimary font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
+        placeholder="Paste JSON or CSV here…"></textarea>
+      <div class="flex flex-wrap items-center gap-2 shrink-0">
+        <button id="uploadApplyBtn" class="btn-primary">Load Data</button>
+        <span id="uploadStatus" class="text-xs text-textSecondary"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- "Why I chose this" centered overlay (Recommended reasoning; fade in, closed on load) -->
+  <div id="reasonBackdrop"
+    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="reasonModal"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-surface border-2 border-borderc rounded-2xl w-[480px] max-w-full p-5 shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold text-textPrimary">Why I chose this</h2>
+        <button id="reasonClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+      </div>
+      <div id="reasonBody" class="text-sm text-textPrimary leading-relaxed whitespace-pre-line max-h-[60vh] overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- Floating info popover (anchored near a clicked ⓘ; positioned + filled by JS) -->
+  <div id="infoPopover"
+    class="fixed z-[60] hidden max-w-[280px] bg-surface border-2 border-[#FBBF24] rounded-lg shadow-xl p-3 text-xs text-textPrimary leading-relaxed"></div>
+
+<script src="_js/utils.js"></script>
+<script src="_js/roster-data.js"></script>
+<script src="_js/roster-builder.js"></script></body>
+</html>

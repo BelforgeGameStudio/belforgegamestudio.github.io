@@ -10,7 +10,10 @@
       "Bash(test -f \"C:\\\\Users\\\\domin\\\\OneDrive\\\\Work\\\\MyWorkspace\\\\BelforgeGameStudio\\\\belforge.github.io\\\\package-lock.json\")",
       "Bash(node -e \":*)",
       "mcp__belforge__list_directory_with_sizes",
-      "Bash(printf '</body>\\\\n</html>\\\\n')"
+      "Bash(printf '</body>\\\\n</html>\\\\n')",
+      "Bash(wc -l js/*.js css/*.css tools/*.html build.py)",
+      "Bash(xargs wc -l)",
+      "WebFetch(domain:git.coop)"
     ]
   }
 }
