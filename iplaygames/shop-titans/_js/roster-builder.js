@@ -248,10 +248,14 @@
     }
 
     var counts = {}; // running roster class counts (for filter caps/min as the build commits)
-    // Classes matching `filter` and not excluded, sorted by class-average ATK desc, priority asc.
+    // Classes matching `filter` and not excluded, sorted by EFFECTIVE (crit-folded) ATK desc, priority
+    // asc. Using effClassAtk (not raw ATK) so candidate generation values crit chance / crit-damage the
+    // same way the sim, diversify, and explainBuild do — a high-crit class no longer ranks below a
+    // higher-raw-ATK one that actually does less damage. (Evade is survivability, not ATK, so it's
+    // handled by flexRefine's shortlist + the sim, not here.)
     function byAtk(filter) {
       return allClasses.filter(function (cn) { return !fExclude(cn) && filter(cn); }).sort(function (a, b) {
-        var d = classAvg(b, "atk") - classAvg(a, "atk");
+        var d = effClassAtk(b) - effClassAtk(a);
         return d !== 0 ? d : state.classOrder.indexOf(a) - state.classOrder.indexOf(b);
       });
     }
@@ -311,10 +315,28 @@
       if (slots.length !== cap || bestBar < BARRIER_POWER_TARGET || rounds >= MZE.roundCap) {
         tier = 4; // hard fail (D): undermanned, barrier unbroken, or can't kill before the 500-round cap
       } else {
-        var units = slots.map(function (cn) { return { hp: classAvg(cn, "hp") * buff.hpMult, def: classAvg(cn, "def") * buff.defMult, eva: classAvg(cn, "eva") + buff.evaAdd, threat: classAvg(cn, "threat"), evaCap: evaCapOf(cn), atk: buffedEffAtk(classAvg(cn, "atk"), classAvg(cn, "crit"), critMultOf(cn), buff) }; });
-        if (champ) units.push({ hp: (Number(champ.hp) || 0) * buff.hpMult, def: (Number(champ.def) || 0) * buff.defMult, eva: (Number(champ.eva) || 0) + buff.evaAdd, threat: Number(champ.threat) || 0, evaCap: MZE.evaCapDefault, atk: buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) });
         var saves = slots.reduce(function (a, cn) { return a + classSaves(cn); }, 0);
-        win = winChance(units, rounds, saves);
+        // Recommended now ranks on the SAME Monte Carlo sim that drives the displayed grade, so the
+        // optimizer "sees" the conditional skills (Jarl rage, Rudo crit, Lilu heal, …) and will pick
+        // classes the closed form was blind to. Smaller N than the display + cached by composition
+        // (champion + sorted slots + saves + gear tier — the el only affects barrier/align, not the
+        // sim) so the thousands of search/diversify evals stay fast. (winChance remains the fast
+        // fallback engine — `partyOutcome`'s pre-gate and this branch's pre-gate still use the
+        // closed-form ATK to skip impossible builds before paying for the sim.)
+        var key = "opt|" + state.quality + "|" + (champ ? champ.name : "") + "|" + saves + "|" + slots.slice().sort().join(",");
+        win = _simScoreCache[key];
+        if (win === undefined) {
+          var sunits = slots.map(function (cn) {
+            return simUnitFromStats(cn, false, null, classAvg(cn, "hp") * buff.hpMult, classAvg(cn, "def") * buff.defMult,
+              classAvg(cn, "eva") + buff.evaAdd, classAvg(cn, "threat"), evaCapOf(cn),
+              classAvg(cn, "atk") * buff.atkMult, classAvg(cn, "crit") + buff.critAdd, critMultOf(cn) + buff.critDmgAdd);
+          });
+          if (champ) sunits.push(simUnitFromStats(null, true, champ.name, (Number(champ.hp) || 0) * buff.hpMult,
+            (Number(champ.def) || 0) * buff.defMult, (Number(champ.eva) || 0) + buff.evaAdd, Number(champ.threat) || 0,
+            MZE.evaCapDefault, (Number(champ.atk) || 0) * buff.atkMult, (Number(champ.crit) || 0) + buff.critAdd, MZE.critDmgMod + buff.critDmgAdd));
+          win = simWinChance(sunits, SIM.optimizerTrials, hashStr(key), { saves: saves, champName: champ ? champ.name : null });
+          _simScoreCache[key] = win;
+        }
         tier = winTier(win);
       }
       return { tier: tier, align: champCovers(p, el) > 0 ? 1 : 0, atk: atk, bar: bestBar, win: win };
@@ -332,19 +354,27 @@
 
     // "Free" breadth: swap each slot toward an under-represented element WITHOUT dropping
     // the party's tier (re-scoring guards barrier / kill-speed / fragility). Slot 0 stays a
-    // tank (swaps only among tanks); other slots swap among DPS. Spreads coverage across all
-    // six elements wherever a party has slack, so a barrier/zone change needs fewer rebuilds.
-    // Slot preference (lower is better, lexicographic): 1) less-used element (breadth),
-    // 2) higher Class Priority, 3) higher effective ATK. Breadth still spreads across the six
-    // elements; within that, your priority list decides which class fills each slot.
-    function slotPref(cn, local) { return [(local[CLASS[cn].element] || 0), state.classOrder.indexOf(cn), -effClassAtk(cn)]; }
+    // tank (swaps only among tanks); other slots swap among DPS.
+    // Slot preference (lower is better, lexicographic): 1) breadth need, 2) Class Priority,
+    // 3) effective ATK. Breadth is a FLOOR, not an endless objective: an element only "needs"
+    // more until it hits BREADTH_FLOOR/element; once every element is at the floor, the breadth
+    // term ties and your Class Priority list decides the discretionary slots (no longer spreads
+    // for spreading's sake). Raise the floor to spread more before priority kicks in; lower it
+    // to honor priority sooner. Barrier-forced dark/light/earth presence is unaffected (hard req).
+    var BREADTH_FLOOR = 2; // keep every element barrier-capable (~2), then Class Priority drives the rest
+    // A breadth swap must be truly (near-)free: it may not drop the party's est. win % by more than
+    // this. Without it, `diversify` would happily trade a 95%-win nuker for an off-element low-DPS
+    // class just because the coarse S/A/B/C tier "held" — exactly what made Recommended grades sag.
+    var DIVERSIFY_WIN_EPS = 0.04;
+    function slotPref(cn, local) { return [Math.min(local[CLASS[cn].element] || 0, BREADTH_FLOOR), state.classOrder.indexOf(cn), -effClassAtk(cn)]; }
     function prefLess(a, b) { for (var k = 0; k < a.length; k++) { if (a[k] !== b[k]) return a[k] < b[k]; } return false; }
     function diversify(p, el, slots, tier) {
       var out = slots.slice();
+      var curWin = scoreOf(p, el, out).win; // protect the actual win %, not just the tier bucket
       for (var i = 0; i < out.length; i++) {
         var curEl = CLASS[out[i]] ? CLASS[out[i]].element : null;
         // An "all" slot (Spellknight) may still swap out toward an under-represented single
-        // element — the candidate filter (no "all" in) + scoreOf tier guard below keep it safe.
+        // element — the candidate filter (no "all" in) + the tier+win guard below keep it safe.
         if (!curEl) continue;
         if (fMin(out[i]) > (counts[out[i]] || 0)) continue; // don't swap away a still-needed required class
         var local = {};
@@ -357,8 +387,48 @@
         }).sort(function (a, b) { var pa = slotPref(a, local), pb = slotPref(b, local); return prefLess(pa, pb) ? -1 : (prefLess(pb, pa) ? 1 : 0); });
         for (var j2 = 0; j2 < cands.length; j2++) {
           var trial = out.slice(); trial[i] = cands[j2];
-          if (scoreOf(p, el, trial).tier <= tier) { out = trial; break; }
+          var s2 = scoreOf(p, el, trial);
+          if (s2.tier <= tier && s2.win >= curWin - DIVERSIFY_WIN_EPS) { out = trial; curWin = s2.win; break; } // breadth only when ~free
         }
+      }
+      return out;
+    }
+
+    // Sim-driven win refine. `buildFor` fills slots by raw ATK, so bulky / flexible low-ATK classes
+    // — above all Spellknight ("all" element, ~half a nuker's ATK but far tankier) — never get
+    // CONSTRUCTED as candidates, even though the sim rates them higher because they survive the long
+    // fight. This pass lets the sim rank each non-tank slot across the FULL DPS pool and keeps a swap
+    // only when it raises the party's est. win % by more than FLEX_WIN_EPS (above the ~±2.6% sim noise,
+    // so it isn't chasing noise). `scoreOf` still enforces barrier coverage + tier, so a swap can never
+    // break the party's barrier (e.g. it won't drop a Bishop that's holding the light barrier). Runs
+    // AFTER diversify, so it only overrides a breadth choice when another class wins MEANINGFULLY more
+    // — the barrier element (and thus roster-wide barrier breadth) is fixed here.
+    var FLEX_WIN_EPS = 0.02;
+    // The blind spot is specifically the BULKY / FLEXIBLE / DODGY low-ATK picks ATK-greed skips, above
+    // all Spellknight ("all" element). The high-ATK nukers are already explored by buildFor + diversify,
+    // so the refine only needs to offer the SURVIVABILITY underdogs — ranked by effective HP, which
+    // credits dodge (`hp / (1 − dodge)`), so high-EVA evasion picks (Acrobat/Grandmaster/Pathfinder)
+    // are offered alongside the high-raw-HP ones. Top 5 + Spellknight (keeps the pass cheap).
+    function survProxy(cn) {
+      var dodge = Math.max(0, Math.min(evaCapOf(cn) / 100, (classAvg(cn, "eva") - MZE.evaPenalty) / 100));
+      return classAvg(cn, "hp") / Math.max(0.1, 1 - dodge); // effective HP — dodge multiplies survivability
+    }
+    var flexPool = dpsByAtk.slice().sort(function (a, b) { return survProxy(b) - survProxy(a); }).slice(0, 5);
+    if (CLASS["Spellknight"] && flexPool.indexOf("Spellknight") < 0) flexPool.push("Spellknight");
+    function flexRefine(p, el, slots) {
+      var out = slots.slice();
+      var cur = scoreOf(p, el, out).win;
+      for (var i = 1; i < out.length; i++) {                 // slot 0 = tank, leave it
+        if (fMin(out[i]) > (counts[out[i]] || 0)) continue;  // don't drop a still-required class
+        var bestCn = out[i], bestWin = cur;
+        for (var c = 0; c < flexPool.length; c++) {
+          var cn = flexPool[c];
+          if (cn === out[i] || fExclude(cn) || (counts[cn] || 0) >= fMax(cn)) continue;
+          var trial = out.slice(); trial[i] = cn;
+          var w = scoreOf(p, el, trial).win;                 // tier-4 (barrier broken / undermanned) → win 0, auto-rejected
+          if (w > bestWin + FLEX_WIN_EPS) { bestWin = w; bestCn = cn; }
+        }
+        if (bestCn !== out[i]) { out[i] = bestCn; cur = bestWin; }
       }
       return out;
     }
@@ -383,6 +453,7 @@
         });
       });
       var chosen = best ? diversify(p, best.el, best.slots, best.sc.tier) : [];
+      if (chosen.length) chosen = flexRefine(p, best.el, chosen); // let the sim pull in bulky/flex picks (Spellknight)
       for (var i = 0; i < chosen.length; i++) {
         if (!mk(chosen[i], p.id)) break;
         var e = CLASS[chosen[i]] && CLASS[chosen[i]].element;
@@ -793,7 +864,7 @@
 
     var champEl = partyChampEl(p);
     return '<div data-party-id="' + p.id + '" class="bg-surface border-2 border-borderc rounded-xl p-3 transition" style="border-color:' + r.color + '">' +
-      '<div class="flex items-center gap-2 mb-1">' + gradeImg(p) +
+      '<div class="flex items-center gap-2 mb-1">' + gradeImg(p) + gradePct(p) +
         '<input class="flex-1 min-w-0 bg-transparent border-none outline-none font-bold text-base text-textPrimary" value="' + escA(p.name) + '" data-action="text" data-target="party" data-id="' + p.id + '" data-field="name" data-k="party-' + p.id + '-name">' +
         (recommendReasons[p.id] ? '<button class="bg-transparent border-none cursor-pointer p-0 leading-none shrink-0 opacity-80 hover:opacity-100 transition" data-reason-pid="' + p.id + '" title="Why I chose this"><img src="' + IMG_DIR + 'Wooden_Chest.webp" alt="Why I chose this" class="w-5 h-5 object-contain" onerror="this.outerHTML=\'ⓘ\'"></button>' : '') +
         '<button class="bg-transparent border-none cursor-pointer p-0 leading-none shrink-0 opacity-70 hover:opacity-100 transition" data-action="del-party" data-id="' + p.id + '" title="Delete party"><img src="' + IMG_DIR + 'cancel.png" alt="Delete party" class="w-5 h-5 object-contain" onerror="this.outerHTML=\'×\'"></button>' +
@@ -1230,6 +1301,35 @@
   var MZE = { bossHP: 10000000, baseHit: 410, aoeHit: 280, aoeChance: 0.225, critHit: 615, critChance: 0.10, critPerNegEva: 0.0025, evaPenalty: 20, evaCapDefault: 75, critDmgMod: 2.0, allBarrierFactor: 0.5, roundCap: 500 };
   // aoeChance = per-round chance the boss uses an AoE that hits EVERY unit (~20-25% observed;
   // 0.225 midpoint, tunable). aoeHit (280) is DEF-reduced like a normal hit (~68% of baseHit).
+
+  // ---- Phase-2 Monte Carlo sim tuning (conditional / `sim`-flagged skills) ----
+  // The engine (simulateFight) switches on class/champion NAME and pulls magnitudes from here, so
+  // every conditional-skill number lives in ONE place (like MZE). The CLASS_SKILLS / CHAMPION_SKILLS
+  // `text` is the player-facing wording of these same effects. Tune freely.
+  //   jarl    : below 80%/55%/30% HP → +50%/100%/150% ATK & +10/20/30 EVA (1×/2×/3× the tier values).
+  //   conq    : +0.25 crit-MULT per consecutive crit, up to 4 stacks (resets on a non-crit).
+  //   sensei  : +50 crit chance & +25 EVA while undamaged; lost when hit, regained after 2 clean rounds.
+  //   acrobat : guaranteed crit the round after it dodges. daimyo: guaranteed dodge + crit on round 1.
+  //   bishop  : +10 HP/round self-heal AND survives one fatal blow — BOTH self-only (the individual
+  //             Bishop), not the party. (Lord's save is the party-wide one.) See the save logic below.
+  //   dk      : execute — when the boss is at ≤10% HP and the Death Knight attacks, the boss is
+  //             instantly defeated (the fight is won). Otherwise the DK just deals its normal hit.
+  //   rudo    : party-wide +50 crit chance for the first 4 rounds. lilu: party +20 HP/round.
+  //   hemma   : drains 7% of the highest-HP ally/round → self-heal + a stacking +35% ATK (cap 12).
+  var SIM = {
+    trials: 400,            // trials per DISPLAYED party grade (seeded → the % is stable, not flickery)
+    optimizerTrials: 400,   // trials per Recommended/scoreOf eval (cached; ~±2% noise so the refine can trust ~3% gaps)
+    jarl:   { t1: 0.80, t2: 0.55, t3: 0.30, atkPerTier: 0.50, evaPerTier: 10 },
+    conq:   { perStack: 0.25, maxStacks: 4 },
+    sensei: { crit: 50, eva: 25, regainRounds: 2 },
+    bishop: { regen: 10 },
+    dk:     { executeFrac: 0.10 }, // boss at ≤10% HP when the DK attacks → instantly defeated
+    rudo:   { crit: 50, rounds: 4 },
+    lilu:   { heal: 20 },
+    hemma:  { drainFrac: 0.07, atkPerStack: 0.35, maxStacks: 12 }
+  };
+  // FNV-1a string hash → a stable 32-bit seed (so the same roster always shows the same sim %).
+  function hashStr(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   var STATFIELD = "bg-hoverBg border border-borderc rounded text-textPrimary px-1 py-1 outline-none text-xs font-mono text-right focus:border-accent";
   function statNum(x) { return Number(String(x).replace(/[^0-9.\-]/g, "")) || 0; }
 
@@ -1408,6 +1508,194 @@
     return units;
   }
 
+  /* ---------------- Phase-2 Monte Carlo combat sim ----------------
+   * A per-round fight simulator that resolves a SINGLE trial of the MZE fight, then averages many
+   * seeded trials into a win %. Unlike the closed-form `winChance` (a static expectation), the sim
+   * tracks boss HP draining round-by-round from the ALIVE units, so STATE-DEPENDENT skills can move
+   * the grade: Jarl's HP-threshold rage, Conq/Acrobat/Daimyo/Sensei crit states, DK execute/stacking,
+   * Rudo's timed crit, and Lilu/Hemma/Bishop healing all read the live fight state each round.
+   *
+   * Damage model: the boss's attacks (who's targeted, dodge, crit, AoE) are the Monte Carlo dice —
+   * they decide who dies and when, which drives party DPS over time. Each unit's OWN attack rolls a
+   * discrete crit too (so "consecutive crit" / "guaranteed crit" skills are real events); a discrete
+   * crit averages to exactly `effAtkOf` (atk·(1+cc·(critMult−1))), so with conditionals OFF the sim's
+   * mean DPS matches the closed-form's folded ATK — see the bare-mode sanity check in the NOTES.
+   *
+   * Performance tradeoff (documented): the OPTIMIZER (`scoreOf`/Recommended) keeps the fast closed-form
+   * `winChance` for its thousands of inner-loop evals; the sim runs ONLY for the displayed party grade
+   * (`partyOutcome`), memoized per exact composition (`_simCache`) so re-renders are free.
+   */
+  var _simBare = false; // when true, conditional skills are skipped (engine-vs-closed-form sanity check)
+
+  // One sim unit: combat stats + the runtime fields the conditional skills mutate during a trial.
+  // critMult already includes the champion crit-damage aura (buff.critDmgAdd), mirroring buffedEffAtk.
+  function simUnitFromStats(cn, isChamp, champName, hp, def, eva, threat, evaCap, atk, crit, critMult) {
+    return {
+      cn: cn, isChamp: !!isChamp, champName: champName || null,
+      maxHp: hp, def: def, evaBase: eva, threat: threat, evaCap: evaCap,
+      baseAtk: Number(atk) || 0, critChance: Number(crit) || 0, critMult: critMult
+    };
+  }
+  // Build the sim unit list for a party — same buffed stats as `partyUnits`, plus the raw crit
+  // chance / crit multiplier the sim needs to roll discrete crits (partyUnits pre-folds them into atk).
+  function simUnits(hs, champ, buff) {
+    buff = buff || partyBuff(null, []);
+    var units = hs.map(function (h) {
+      return simUnitFromStats(h.className, false, null,
+        heroStat(h, "hp") * buff.hpMult, heroStat(h, "def") * buff.defMult,
+        heroStat(h, "eva") + buff.evaAdd, heroStat(h, "threat"), evaCapOf(h.className),
+        (Number(heroStat(h, "atk")) || 0) * buff.atkMult, heroStat(h, "crit") + buff.critAdd,
+        critMultOf(h.className) + buff.critDmgAdd);
+    });
+    if (champ) units.push(simUnitFromStats(null, true, champ.name,
+      (Number(champ.hp) || 0) * buff.hpMult, (Number(champ.def) || 0) * buff.defMult,
+      (Number(champ.eva) || 0) + buff.evaAdd, Number(champ.threat) || 0, MZE.evaCapDefault,
+      (Number(champ.atk) || 0) * buff.atkMult, (Number(champ.crit) || 0) + buff.critAdd,
+      MZE.critDmgMod + buff.critDmgAdd));
+    return units;
+  }
+  function jarlTier(frac) { return frac < SIM.jarl.t3 ? 3 : frac < SIM.jarl.t2 ? 2 : frac < SIM.jarl.t1 ? 1 : 0; }
+  // Conditional-adjusted EVA (Jarl rage, Sensei untouched buff) — used for both dodge and enemy-crit chance.
+  function condEva(x) {
+    var eva = x.evaBase;
+    if (!_simBare) {
+      if (x.cn === "Jarl") { var t = jarlTier(x.hp / x.maxHp); if (t) eva += SIM.jarl.evaPerTier * t; }
+      else if (x.cn === "Sensei" && x.sensClean) eva += SIM.sensei.eva;
+    }
+    return eva;
+  }
+  function dodgeProbOf(x, r) {
+    if (!_simBare && x.cn === "Daimyo" && r === 1) return 1; // guaranteed round-1 dodge
+    var effEva = condEva(x) - MZE.evaPenalty;
+    var cap = (x.evaCap || MZE.evaCapDefault) / 100;
+    return Math.max(0, Math.min(cap, effEva / 100));
+  }
+  // Apply one boss attack to a unit (single-target can crit; AoE is a flat DEF-reduced hit). Mutates hp.
+  function applyBossHit(x, r, rng, isAoe) {
+    if (rng() < dodgeProbOf(x, r)) { x.dodgedThisRound = true; return; }
+    var dmg;
+    if (isAoe) {
+      dmg = MZE.aoeHit * mzeDefMult(x.def);
+    } else {
+      var effEva = condEva(x) - MZE.evaPenalty;
+      var bossCrit = MZE.critChance + Math.max(0, -effEva) * MZE.critPerNegEva; // crit ignores DEF
+      dmg = (rng() < bossCrit) ? MZE.critHit : MZE.baseHit * mzeDefMult(x.def);
+    }
+    x.hp -= dmg;
+    x.damagedThisRound = true;
+  }
+  // Resolve ONE fight → true (boss dead before the round cap) / false (wiped or hit the cap).
+  // `rng` is a mulberry32 stream (advanced across trials); `opts` = { saves, champName }.
+  function simulateFight(units, rng, opts) {
+    opts = opts || {};
+    var n = units.length;
+    if (!n) return false;
+    var u = new Array(n);
+    for (var i = 0; i < n; i++) { var s = units[i];
+      u[i] = { cn: s.cn, isChamp: s.isChamp, champName: s.champName, maxHp: s.maxHp, hp: s.maxHp,
+        def: s.def, evaBase: s.evaBase, threat: s.threat, evaCap: s.evaCap, baseAtk: s.baseAtk,
+        critChance: s.critChance, critMult: s.critMult, alive: true, consec: 0,
+        hemmaStack: 0, sensClean: true, sensCnt: 0, dodgedLast: false, dodgedThisRound: false,
+        damagedThisRound: false,
+        // Bishop survive-fatal is SELF-only (the individual Bishop). Lord's is the party-wide pool below.
+        selfSave: !_simBare && !!(CLASS_SKILLS[s.cn] && CLASS_SKILLS[s.cn].surviveFatal), usedSelfSave: false };
+    }
+    // Party-wide saves = Lord's "protect an ally" (one per Lord). Bishop's save is per-unit (selfSave), NOT here.
+    var allySaves = 0;
+    if (!_simBare) for (var i = 0; i < n; i++) { if (CLASS_SKILLS[u[i].cn] && CLASS_SKILLS[u[i].cn].protectAlly) allySaves++; }
+    var rudo = !_simBare && opts.champName === "Rudo";
+    var lilu = !_simBare && opts.champName === "Lilu";
+    var bossHp = MZE.bossHP, cap = MZE.roundCap;
+    for (var r = 1; r <= cap; r++) {
+      // ---- party damage (alive units, with this round's conditional state) ----
+      var dmg = 0;
+      for (var i = 0; i < n; i++) {
+        var x = u[i]; if (!x.alive) continue;
+        // Death Knight execute: if the boss is at ≤10% HP when the DK attacks, it's instantly defeated.
+        if (!_simBare && x.cn === "Death Knight" && (bossHp - dmg) <= MZE.bossHP * SIM.dk.executeFrac) return true;
+        var cc = x.critChance, cm = x.critMult, atkMul = 1, forced = false;
+        if (!_simBare) {
+          if (x.cn === "Jarl") { var t = jarlTier(x.hp / x.maxHp); if (t) atkMul *= 1 + SIM.jarl.atkPerTier * t; }
+          else if (x.cn === "Sensei") { if (x.sensClean) cc += SIM.sensei.crit; }
+          else if (x.cn === "Daimyo") { if (r === 1) forced = true; }
+          else if (x.cn === "Acrobat") { if (x.dodgedLast) forced = true; }
+          else if (x.cn === "Conquistador") { if (x.consec > 0) cm += SIM.conq.perStack * Math.min(x.consec, SIM.conq.maxStacks); }
+          if (rudo && r <= SIM.rudo.rounds) cc += SIM.rudo.crit;
+          if (x.isChamp && x.champName === "Hemma") atkMul *= 1 + SIM.hemma.atkPerStack * x.hemmaStack;
+        }
+        var isCrit = forced || (rng() < Math.max(0, Math.min(1, cc / 100)));
+        dmg += x.baseAtk * atkMul * (isCrit ? cm : 1);
+        if (!_simBare && x.cn === "Conquistador") x.consec = isCrit ? x.consec + 1 : 0;
+      }
+      bossHp -= dmg;
+      if (bossHp <= 0) return true; // boss dead → win
+      // ---- boss attacks ----
+      var totT = 0, aliveCnt = 0;
+      for (var i = 0; i < n; i++) { u[i].dodgedThisRound = false; u[i].damagedThisRound = false; if (u[i].alive) { totT += Number(u[i].threat) || 0; aliveCnt++; } }
+      if (!aliveCnt) return false; // wiped
+      // single-target by threat share
+      var roll = rng() * (totT > 0 ? totT : aliveCnt), acc = 0, tgt = null;
+      for (var i = 0; i < n; i++) {
+        if (!u[i].alive) continue;
+        acc += totT > 0 ? (Number(u[i].threat) || 0) : 1;
+        if (roll <= acc) { tgt = u[i]; break; }
+      }
+      if (!tgt) { for (var i = n - 1; i >= 0; i--) if (u[i].alive) { tgt = u[i]; break; } }
+      applyBossHit(tgt, r, rng, false);
+      // AoE: hits every alive unit (per-unit dodge), no threat gate
+      if (rng() < MZE.aoeChance) { for (var i = 0; i < n; i++) if (u[i].alive) applyBossHit(u[i], r, rng, true); }
+      // deaths — a Bishop spends its OWN survive-fatal first; otherwise a Lord's party-wide save covers
+      // the ally; else the unit dies. Each save revives to 1 HP, once.
+      for (var i = 0; i < n; i++) { var x = u[i]; if (x.alive && x.hp <= 0) {
+        if (x.selfSave && !x.usedSelfSave) { x.usedSelfSave = true; x.hp = 1; }
+        else if (allySaves > 0) { allySaves--; x.hp = 1; }
+        else { x.alive = false; }
+      } }
+      // ---- end-of-round upkeep (healing, Hemma drain, Sensei/Acrobat state) ----
+      if (!_simBare) {
+        for (var i = 0; i < n; i++) { var x = u[i]; if (!x.alive) continue;
+          if (lilu) x.hp = Math.min(x.maxHp, x.hp + SIM.lilu.heal);
+          if (x.cn === "Bishop") x.hp = Math.min(x.maxHp, x.hp + SIM.bishop.regen);
+        }
+        var hemma = null;
+        for (var i = 0; i < n; i++) if (u[i].alive && u[i].isChamp && u[i].champName === "Hemma") { hemma = u[i]; break; }
+        if (hemma) {
+          var victim = null;
+          for (var i = 0; i < n; i++) { var x = u[i]; if (x.alive && x !== hemma && (!victim || x.hp > victim.hp)) victim = x; }
+          if (victim) { var drain = victim.hp * SIM.hemma.drainFrac; victim.hp -= drain;
+            hemma.hp = Math.min(hemma.maxHp, hemma.hp + drain); if (hemma.hemmaStack < SIM.hemma.maxStacks) hemma.hemmaStack++; }
+        }
+        for (var i = 0; i < n; i++) { var x = u[i]; if (!x.alive) continue;
+          if (x.cn === "Sensei") { if (x.damagedThisRound) { x.sensClean = false; x.sensCnt = 0; }
+            else if (!x.sensClean) { x.sensCnt++; if (x.sensCnt >= SIM.sensei.regainRounds) x.sensClean = true; } }
+          x.dodgedLast = x.dodgedThisRound;
+        }
+      }
+    }
+    return bossHp <= 0; // round cap reached → loss
+  }
+  // Average N seeded trials → win chance (0..1). Deterministic given the seed.
+  function simWinChance(units, N, seed, opts) {
+    N = N || SIM.trials;
+    _simBare = !!(opts && opts.bare);
+    var rng = mulberry32(seed >>> 0), wins = 0;
+    for (var t = 0; t < N; t++) if (simulateFight(units, rng, opts)) wins++;
+    _simBare = false;
+    return wins / N;
+  }
+  // Composition signature → memo key + stable seed source. Encodes everything that changes the sim
+  // (classes, every resolved stat, champion, saves, gear tier, sim version) so the cache never goes stale.
+  function partySig(hs, champ, saves) {
+    var hero = hs.map(function (h) {
+      return h.className + "," + heroStat(h, "hp") + "," + heroStat(h, "atk") + "," + heroStat(h, "def") +
+        "," + heroStat(h, "eva") + "," + heroStat(h, "crit") + "," + heroStat(h, "threat");
+    }).join(";");
+    var ch = champ ? [champ.name, champ.hp, champ.atk, champ.def, champ.eva, champ.crit, champ.threat].join(",") : "";
+    return "sim2|" + state.quality + "|" + saves + "|" + hero + "|" + ch;
+  }
+  var _simCache = {};       // displayed-grade sim (per exact composition, partySig)
+  var _simScoreCache = {};  // optimizer sim (per champion + sorted slots + saves + tier, see scoreOf)
+
   // Full party outcome → the face icon. The grade is the ESTIMATED WIN CHANCE, not raw speed:
   //   • Hard fails (win 0%): undermanned, barrier not broken (≥320), or can't kill the 10M boss
   //     before the 500-round cap (auto-loss).
@@ -1425,7 +1713,15 @@
     if (partyBestBarrier(p, hs) * buff.barrierMult < BARRIER_POWER_TARGET) return { grade: "D", winPct: 0, fail: true, reason: "barrier", rounds: rounds };
     if (rounds >= MZE.roundCap) return { grade: "D", winPct: 0, fail: true, reason: "roundcap", rounds: rounds };
     var saves = hs.reduce(function (a, h) { return a + classSaves(h.className); }, 0);
-    var w = winChance(partyUnits(hs, champ, buff), rounds, saves);
+    // Phase-2: the DISPLAYED grade comes from the Monte Carlo sim (models the conditional skills),
+    // seeded + memoized per composition so the % is stable and re-renders are free. The closed-form
+    // `winChance` stays as the fast fallback the optimizer (scoreOf) uses in its inner loop.
+    var sig = partySig(hs, champ, saves);
+    var w = _simCache[sig];
+    if (w === undefined) {
+      w = simWinChance(simUnits(hs, champ, buff), SIM.trials, hashStr(sig), { saves: saves, champName: champ ? champ.name : null });
+      _simCache[sig] = w;
+    }
     return { grade: GRADE_LETTERS[winTier(w)], winPct: Math.round(w * 100), fail: false, reason: null, rounds: rounds };
   }
   function partyGrade(p) { return partyOutcome(p).grade; }
@@ -1440,6 +1736,12 @@
     return '<span data-info="' + t + '" class="shrink-0 cursor-pointer hover:brightness-110" title="' + t + '">' +
       '<img src="' + IMG_DIR + o.grade + '.png" alt="Rank ' + o.grade + '" class="w-8 h-8 object-contain pointer-events-none" ' +
       'onerror="this.outerHTML=\'<b class=&quot;text-[#FBBF24]&quot;>' + o.grade + '</b>\'"></span>';
+  }
+  // Estimated success % shown next to the face. Green S/A · amber B · rose C/D (incl. 0% fails).
+  function gradePct(p) {
+    var o = partyOutcome(p);
+    var col = (o.grade === "S" || o.grade === "A") ? COL.emerald : (o.grade === "B" ? COL.amber : COL.rose);
+    return '<span class="text-sm font-bold font-mono shrink-0" style="color:' + col + '" title="estimated success chance">' + o.winPct + '%</span>';
   }
 
   var statsPanel = document.getElementById("statsPanel");
