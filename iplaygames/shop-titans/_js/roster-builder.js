@@ -136,10 +136,28 @@
     ["Grandmaster", 11], ["Spellknight", 11]
   ]).map(function (a, i) { return { id: i + 1, name: "", className: a[0], partyId: a[1], power: 0 }; });
 
+  // Gear-quality tiers the class-average defaults assume (best -> worst, drives dropdown order).
+  // Each tier holds its own full per-class table; switching tier re-skins every inherited stat.
+  var QUALITIES = ["Legendary", "Epic", "Flawless", "Superior"];
+  var DEFAULT_QUALITY = "Epic";
+  function emptyClassTable() {
+    var t = {};
+    CATALOG.forEach(function (c) { t[c.name] = { hp: 0, atk: 0, def: 0, eva: 0, power: 0, crit: 0, threat: 0, critDmg: 2 }; });
+    return t;
+  }
+  function normalizeQuality(q) {
+    if (q == null) return null;
+    var s = String(q).trim().toLowerCase();
+    for (var i = 0; i < QUALITIES.length; i++) if (QUALITIES[i].toLowerCase() === s) return QUALITIES[i];
+    return null;
+  }
+
   var state = {
     maxRoster: DEFAULT_MAX_ROSTER,
     champions: CHAMPION_POOL.map(function (c) { return { name: c.name, el: c.el, power: c.power, hp: 1000, atk: 10000, def: 10000, eva: 0, crit: 0, threat: 0 }; }),
-    classStats: {}, // className -> { hp, atk, def, eva, power, crit, threat, critDmg } averages (defaults)
+    classStatsByQuality: {}, // quality -> { className -> { hp, atk, def, eva, power, crit, threat, critDmg } }
+    quality: DEFAULT_QUALITY, // active tier
+    classStats: {}, // live reference to classStatsByQuality[quality] — classAvg & all readers use this
     classOrder: CATALOG.map(function (c) { return c.name; }), // priority order (feeds suggestions)
     heroes: SEED_HEROES,
     parties: SEED_PARTIES,
@@ -147,7 +165,16 @@
     //   exclude{cn:true} never use the class · max{cn:N} cap roster count · min{cn:N} require roster count
     filters: { exclude: {}, max: {}, min: {} }
   };
-  CATALOG.forEach(function (c) { state.classStats[c.name] = { hp: 0, atk: 0, def: 0, eva: 0, power: 0, crit: 0, threat: 0, critDmg: 2 }; });
+  QUALITIES.forEach(function (q) { state.classStatsByQuality[q] = emptyClassTable(); });
+  // Point the active table at the selected tier. classAvg/panel/paste all read & write state.classStats,
+  // which IS classStatsByQuality[quality] by reference — so edits land in the right tier and persist.
+  function useQuality(q) {
+    var nq = normalizeQuality(q);
+    if (!nq) return;
+    state.quality = nq;
+    state.classStats = state.classStatsByQuality[nq];
+  }
+  useQuality(state.quality);
 
   // Filter helpers (whole-roster). fExclude = never use; fMax = cap (Infinity if unset); fMin = require.
   function fExclude(cn) { return !!state.filters.exclude[cn]; }
@@ -209,6 +236,16 @@
     var allClasses = CATALOG.map(function (c) { return c.name; });
     var topAny = state.classOrder[0] || CATALOG[0].name;
     recommendReasons = {}; // rebuilt per party below
+
+    // Soft feasibility check: if the sum of all required class minimums can't fit in the roster
+    // cap, the minimums are mathematically unsatisfiable. Warn (don't block) — the greedy fill is
+    // best-effort, so the user understands why some minimums may go unmet in the result.
+    var minSum = allClasses.reduce(function (a, cn) { return a + fMin(cn); }, 0);
+    if (minSum > state.maxRoster) {
+      showAlert("Filter minimums require " + minSum + " heroes, but the roster cap (Max Roster) is " +
+        state.maxRoster + ". Those minimums can't all be met — raise Max Roster or lower the minimums. " +
+        "Building the best roster possible anyway.");
+    }
 
     var counts = {}; // running roster class counts (for filter caps/min as the build commits)
     // Classes matching `filter` and not excluded, sorted by class-average ATK desc, priority asc.
@@ -306,7 +343,9 @@
       var out = slots.slice();
       for (var i = 0; i < out.length; i++) {
         var curEl = CLASS[out[i]] ? CLASS[out[i]].element : null;
-        if (!curEl || curEl === "all") continue;
+        // An "all" slot (Spellknight) may still swap out toward an under-represented single
+        // element — the candidate filter (no "all" in) + scoreOf tier guard below keep it safe.
+        if (!curEl) continue;
         if (fMin(out[i]) > (counts[out[i]] || 0)) continue; // don't swap away a still-needed required class
         var local = {};
         Object.keys(elemCount).forEach(function (k) { local[k] = elemCount[k]; });
@@ -414,7 +453,8 @@
     return JSON.stringify({
       maxRoster: state.maxRoster,
       champions: state.champions.map(function (c) { return { name: c.name, el: c.el, power: Number(c.power) || 0, hp: Number(c.hp) || 0, atk: Number(c.atk) || 0, def: Number(c.def) || 0, eva: Number(c.eva) || 0, crit: Number(c.crit) || 0, threat: Number(c.threat) || 0 }; }),
-      classStats: state.classStats,
+      quality: state.quality,
+      classStatsByQuality: state.classStatsByQuality,
       classOrder: state.classOrder,
       filters: state.filters,
       parties: state.parties.map(function (p) {
@@ -455,16 +495,30 @@
         champName: p.champName == null ? "" : String(p.champName)
       };
     });
-    // classStats: start from defaults (all classes 0), overlay any saved values
-    var cs = {};
-    CATALOG.forEach(function (c) { cs[c.name] = { hp: 0, atk: 0, def: 0, eva: 0, power: 0, crit: 0, threat: 0, critDmg: 2 }; });
-    if (data.classStats && typeof data.classStats === "object") {
-      Object.keys(data.classStats).forEach(function (name) {
-        var s = data.classStats[name] || {};
-        cs[name] = { hp: Number(s.hp) || 0, atk: Number(s.atk) || 0, def: Number(s.def) || 0, eva: Number(s.eva) || 0, power: Number(s.power) || 0, crit: Number(s.crit) || 0, threat: Number(s.threat) || 0, critDmg: Number(s.critDmg) || 2 };
+    // classStats: build per-quality tables. New saves carry classStatsByQuality; legacy saves have a
+    // single flat classStats (= best gear) which we migrate into the Legendary tier.
+    var byQ = {};
+    QUALITIES.forEach(function (q) { byQ[q] = emptyClassTable(); });
+    function fillTier(tier, src) {
+      var tbl = byQ[tier];
+      if (!tbl || !src || typeof src !== "object") return;
+      Object.keys(src).forEach(function (name) {
+        var key = tbl[name] ? name : null;
+        if (!key) Object.keys(tbl).forEach(function (k) { if (k.toLowerCase() === name.toLowerCase()) key = k; });
+        if (!key) return;
+        var s = src[name] || {};
+        tbl[key] = { hp: Number(s.hp) || 0, atk: Number(s.atk) || 0, def: Number(s.def) || 0, eva: Number(s.eva) || 0, power: Number(s.power) || 0, crit: Number(s.crit) || 0, threat: Number(s.threat) || 0, critDmg: Number(s.critDmg) || 2 };
       });
     }
-    state.classStats = cs;
+    if (data.classStatsByQuality && typeof data.classStatsByQuality === "object") {
+      QUALITIES.forEach(function (q) { fillTier(q, data.classStatsByQuality[q]); });
+    } else if (data.classStats && typeof data.classStats === "object") {
+      // Legacy flat defaults (= best gear). Seed every tier as a baseline so no tier reads empty;
+      // real per-tier numbers overwrite when quality-tagged data is pasted/uploaded.
+      QUALITIES.forEach(function (q) { fillTier(q, data.classStats); });
+    }
+    state.classStatsByQuality = byQ;
+    useQuality(normalizeQuality(data.quality) || DEFAULT_QUALITY);
     // classOrder: keep saved order (valid classes only), then append any missing catalog classes
     var allNames = CATALOG.map(function (c) { return c.name; });
     var order = Array.isArray(data.classOrder) ? data.classOrder.filter(function (n) { return allNames.indexOf(n) >= 0; }) : [];
@@ -572,8 +626,8 @@
     }).join("");
   }
 
-  /* ---------------- icons (sh-images/) ---------------- */
-  var IMG_DIR = "sh-images/";
+  /* ---------------- icons (images/) ---------------- */
+  var IMG_DIR = "images/";
   // Champion name -> portrait file (most match lowercase name; a couple differ).
   var CHAMP_IMG = {
     Argon: "argon.webp", Bjorn: "bjorn.webp", Malady: "icon_global_malady.webp",
@@ -648,10 +702,17 @@
   function viewAddRoster() {
     var atCap = state.heroes.length >= state.maxRoster;
     return '<section class="bg-surface border-2 border-[#FFC11B] rounded-2xl p-6 space-y-2">' +
-      '<div class="flex items-center justify-between gap-2">' +
+      '<div class="flex flex-wrap items-center justify-between gap-2">' +
         '<div class="text-xs font-semibold uppercase tracking-wider text-textSecondary">Add hero to roster</div>' +
-        '<div class="text-xs text-textSecondary whitespace-nowrap">Roster <b style="color:' + (atCap ? COL.rose : COL.emerald) + '">' + state.heroes.length + '</b> / ' +
-          '<input data-action="max-roster" data-k="max-roster" value="' + state.maxRoster + '" inputmode="numeric" title="Roster capacity (max ' + MAX_ROSTER_CAP + ')" class="w-12 bg-hoverBg border border-borderc rounded px-1 py-0.5 text-textPrimary text-xs text-right outline-none focus:border-accent"></div>' +
+        '<div class="flex items-center gap-3 flex-wrap">' +
+          '<label class="flex items-center gap-1.5 text-xs text-textSecondary whitespace-nowrap"><span class="uppercase tracking-wider text-[10px]">Gear Quality</span>' +
+            '<select data-action="select-quality" title="Gear-quality tier the class-average defaults assume — switches every hero\'s inherited stats" class="bg-hoverBg border border-borderc rounded px-1.5 py-0.5 text-textPrimary text-xs font-semibold outline-none focus:border-accent">' +
+              QUALITIES.map(function (q) { return '<option value="' + escA(q) + '"' + (q === state.quality ? " selected" : "") + '>' + escH(q) + '</option>'; }).join("") +
+            '</select>' +
+          '</label>' +
+          '<div class="text-xs text-textSecondary whitespace-nowrap">Roster <b style="color:' + (atCap ? COL.rose : COL.emerald) + '">' + state.heroes.length + '</b> / ' +
+            '<input data-action="max-roster" data-k="max-roster" value="' + state.maxRoster + '" inputmode="numeric" title="Roster capacity (max ' + MAX_ROSTER_CAP + ')" class="w-12 bg-hoverBg border border-borderc rounded px-1 py-0.5 text-textPrimary text-xs text-right outline-none focus:border-accent"></div>' +
+        '</div>' +
       '</div>' +
       ["Fighter", "Rogue", "Spellcaster"].map(function (grp) {
         return '<div class="flex flex-wrap gap-2">' +
@@ -807,6 +868,13 @@
   app.addEventListener("change", function (e) {
     var sel = e.target.closest('[data-action="select"]');
     if (sel) { applyEdit(sel); render(); return; }
+    var qsel = e.target.closest('[data-action="select-quality"]');
+    if (qsel) {
+      useQuality(qsel.value);
+      setUpdate("Gear quality set to " + state.quality + " — class-average defaults now use the " + state.quality + " tier.");
+      render();
+      return;
+    }
     var champ = e.target.closest('[data-action="select-champ"]');
     if (champ) {
       var pid = Number(champ.dataset.id);
@@ -833,7 +901,6 @@
     else if (a === "auto-sort") {
       var tankCount = state.heroes.filter(function (h) { return heroRole(h) === "tank"; }).length;
       if (tankCount < state.parties.length) { showAlert("Auto Sort can't give every party a tank: " + state.parties.length + " parties but only " + tankCount + " tanks."); return; }
-      if (!confirm("Auto Sort will rearrange ALL parties to maximize full teams that clear a 320 barrier (each with a tank). Continue?")) return;
       var passers = autoSort();
       if (passers === null) { showAlert("Auto Sort couldn't run — your Filters (excluded/capped tanks) leave fewer than " + state.parties.length + " usable tanks."); return; }
       recommendReasons = {}; // different algorithm — Recommended reasoning no longer applies
@@ -846,10 +913,24 @@
       render();
     }
     else if (a === "clear-roster") {
-      if (confirm("Delete ALL heroes from the roster? This can't be undone.")) { state.heroes = []; recommendReasons = {}; setUpdate("Cleared all heroes from the roster."); render(); }
+      showConfirm({
+        title: "Clear roster",
+        bodyHTML: "Delete <b>ALL heroes</b> from the roster? This can't be undone.",
+        confirmLabel: "Clear All",
+        confirmClass: "btn-red",
+        onConfirm: function () { state.heroes = []; recommendReasons = {}; setUpdate("Cleared all heroes from the roster."); render(); }
+      });
     }
     else if (a === "suggested-roster") {
-      if (confirm("Build a suggested roster from your class priority + party needs (tank + 320 barrier)? This replaces ALL current heroes.")) { buildSuggestedRoster(); setUpdate("Recommended — built the ideal roster (" + state.heroes.length + " heroes)."); render(); }
+      showConfirm({
+        title: "Build a recommended roster",
+        bodyHTML:
+          "<p>Builds an <b>aspirational</b> roster from class-average stats at your current gear tier: one tank per party, a cleared <b>320 barrier</b>, then the highest-damage classes for kill speed — spread across elements for breadth.</p>" +
+          "<p class=\"mt-2\"><b>This replaces ALL current heroes.</b></p>" +
+          "<p class=\"mt-2 text-textSecondary\">Want it tailored? Set class <b>excludes, caps, or minimums</b> in the <b>Filters</b> tab first — Recommended honors them.</p>",
+        confirmLabel: "Build Roster",
+        onConfirm: function () { buildSuggestedRoster(); setUpdate("Recommended — built the ideal roster (" + state.heroes.length + " heroes)."); render(); }
+      });
     }
   });
 
@@ -1301,27 +1382,9 @@
     return count;
   }
 
-  function applyClassPaste(text) {
-    if (!text) return 0;
-    var count = 0;
-    text.split(/\r?\n/).forEach(function (line) {
-      if (!line.trim()) return;
-      var parts = line.split("\t");
-      var name = (parts[0] || "").trim();
-      if (!state.classStats[name]) {
-        var found = null;
-        Object.keys(state.classStats).forEach(function (k) { if (k.toLowerCase() === name.toLowerCase()) found = k; });
-        if (!found) return;
-        name = found;
-      }
-      var cs = state.classStats[name];
-      ["hp", "atk", "def", "eva", "power", "crit", "threat", "critDmg"].forEach(function (key, i) {
-        if (parts[i + 1] !== undefined && String(parts[i + 1]).trim() !== "") cs[key] = statNum(parts[i + 1]);
-      });
-      count++;
-    });
-    return count;
-  }
+  // Tab-separated paste (Excel). Same format as the CSV importer: an optional Quality column
+  // routes each row to its tier (Class \t Quality \t 8 stats), else rows apply to the active tier.
+  function applyClassPaste(text) { return parseClassTable(text, "\t"); }
 
   // ---------------- Default Stats (per-class averages) ----------------
   var defaultsPanel = document.getElementById("defaultsPanel");
@@ -1336,7 +1399,9 @@
   function buildDefaultsPanel() {
     if (!defaultsBody) return;
     var clsPaste = '<div class="space-y-2">' +
-      '<div class="text-xs text-textSecondary leading-relaxed">Class averages — defaults a hero uses unless overridden. Paste tab-separated: <b>Class&nbsp; HP&nbsp; ATK&nbsp; DEF&nbsp; EVA&nbsp; Power&nbsp; CRIT&nbsp; THREAT&nbsp; CritDmg</b>.</div>' +
+      '<div class="text-xs text-textSecondary leading-relaxed">Editing the <b style="color:' + COL.amber + '">' + escH(state.quality) + '</b> tier (change via the Gear Quality dropdown). ' +
+        'Paste straight from your sheet <b>including the header row</b> (<b>Class&nbsp; HP&nbsp; ATK&nbsp; DEF&nbsp; EVA&nbsp; Element&nbsp; CRIT&nbsp; THREAT&nbsp; CritDmg</b>, any order). ' +
+        'Add a <b>gear-quality</b> column to fill multiple tiers at once; without it, rows fill the tier above.</div>' +
       '<textarea id="clsPaste" spellcheck="false" class="w-full h-16 p-2 rounded-lg bg-hoverBg border border-borderc text-textPrimary font-mono text-xs resize-y focus:outline-none focus:ring-1 focus:ring-accent" placeholder="Lord&#9;5000&#9;15000&#9;50000&#9;0&#9;230&#9;25&#9;100&#9;2"></textarea>' +
       '<div class="flex items-center gap-2"><button id="clsPasteApply" class="btn-white text-xs px-3 py-1">Apply Class Paste</button><span id="clsPasteStatus" class="text-xs text-textSecondary"></span></div>' +
     '</div>';
@@ -1538,6 +1603,29 @@
   if (alertBackdrop) alertBackdrop.addEventListener("click", closeAlert);
   if (alertModal) alertModal.addEventListener("click", function (e) { if (e.target === alertModal) closeAlert(); });
 
+  // Generic Confirm/Cancel overlay (replaces native confirm()). opts: {title, bodyHTML, confirmLabel,
+  // confirmClass, onConfirm}. bodyHTML is built from static strings only (no user input).
+  var confirmModal = document.getElementById("confirmModal");
+  var confirmBackdrop = document.getElementById("confirmBackdrop");
+  var confirmTitle = document.getElementById("confirmTitle");
+  var confirmBody = document.getElementById("confirmBody");
+  var confirmOkBtn = document.getElementById("confirmOk");
+  var confirmCancelBtn = document.getElementById("confirmCancel");
+  var _confirmCb = null;
+  function showConfirm(opts) {
+    opts = opts || {};
+    if (confirmTitle) confirmTitle.textContent = opts.title || "Confirm";
+    if (confirmBody) confirmBody.innerHTML = opts.bodyHTML || "";
+    if (confirmOkBtn) { confirmOkBtn.textContent = opts.confirmLabel || "Confirm"; confirmOkBtn.className = (opts.confirmClass || "btn-primary") + " w-full"; }
+    _confirmCb = typeof opts.onConfirm === "function" ? opts.onConfirm : null;
+    [confirmModal, confirmBackdrop].forEach(function (el) { if (el) el.classList.remove("opacity-0", "pointer-events-none"); });
+  }
+  function closeConfirm() { _confirmCb = null; [confirmModal, confirmBackdrop].forEach(function (el) { if (el) el.classList.add("opacity-0", "pointer-events-none"); }); }
+  if (confirmOkBtn) confirmOkBtn.addEventListener("click", function () { var cb = _confirmCb; closeConfirm(); if (cb) cb(); });
+  if (confirmCancelBtn) confirmCancelBtn.addEventListener("click", closeConfirm);
+  if (confirmBackdrop) confirmBackdrop.addEventListener("click", closeConfirm);
+  if (confirmModal) confirmModal.addEventListener("click", function (e) { if (e.target === confirmModal) closeConfirm(); });
+
   // Download: trigger a real file download from a Blob.
   function downloadFile(filename, text, mime) {
     try {
@@ -1550,14 +1638,18 @@
       return true;
     } catch (e) { return false; }
   }
-  function rosterJSONStr() { var o = JSON.parse(toJSON()); delete o.classStats; return JSON.stringify(o, null, 2); }
-  function defaultsJSONStr() { return JSON.stringify({ classStats: state.classStats }, null, 2); }
+  function rosterJSONStr() { var o = JSON.parse(toJSON()); delete o.classStatsByQuality; return JSON.stringify(o, null, 2); }
+  function defaultsJSONStr() { return JSON.stringify({ quality: state.quality, classStatsByQuality: state.classStatsByQuality }, null, 2); }
   function csvCell(v) { v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   function defaultsCSVStr() {
-    var lines = ["Class,HP,ATK,DEF,EVA,Element,CRIT,THREAT,CritDmg"];
-    CATALOG.forEach(function (c) {
-      var s = state.classStats[c.name] || {};
-      lines.push([csvCell(c.name)].concat(CLASS_STAT_KEYS.map(function (k) { return Number(s[k]) || 0; })).join(","));
+    // Column order mirrors the source sheet: Class, 8 stats, then the Quality tier last.
+    var lines = ["Class,HP,ATK,DEF,EVA,Element,CRIT,THREAT,CritDmg,Quality"];
+    QUALITIES.forEach(function (q) {
+      var tbl = state.classStatsByQuality[q] || {};
+      CATALOG.forEach(function (c) {
+        var s = tbl[c.name] || {};
+        lines.push([csvCell(c.name)].concat(CLASS_STAT_KEYS.map(function (k) { return Number(s[k]) || 0; })).concat([csvCell(q)]).join(","));
+      });
     });
     return lines.join("\n");
   }
@@ -1601,36 +1693,89 @@
   wireDownload("dlDefaultsCsv", defaultsCSVStr, "t16-default-stats.csv", "text/csv");
   wireDownload("dlAllCsv", allCSVStr, "t16-all.csv", "text/csv");
 
-  // Upload: merge a default-stats object into classStats (known classes only).
-  function applyClassStatsObject(obj) {
+  // Merge a flat { className -> {stats} } map into one quality tier (known classes only).
+  function mergeTier(tier, map) {
+    var tbl = state.classStatsByQuality[tier];
+    if (!tbl || !map || typeof map !== "object") return 0;
     var count = 0;
-    Object.keys(obj).forEach(function (name) {
-      var target = state.classStats[name];
-      if (!target) { Object.keys(state.classStats).forEach(function (k) { if (k.toLowerCase() === name.toLowerCase()) target = state.classStats[k]; }); }
+    Object.keys(map).forEach(function (name) {
+      var target = tbl[name];
+      if (!target) Object.keys(tbl).forEach(function (k) { if (k.toLowerCase() === name.toLowerCase()) target = tbl[k]; });
       if (!target) return;
-      var s = obj[name] || {};
+      var s = map[name] || {};
       CLASS_STAT_KEYS.forEach(function (key) { if (s[key] !== undefined && s[key] !== null && s[key] !== "") target[key] = statNum(s[key]); });
       count++;
     });
     return count;
   }
-  // Upload: parse a default-stats CSV (Class + the 8 stat columns; header row skipped).
-  function applyClassCSV(text) {
+  // Upload: accept either a quality-keyed object ({Legendary:{Knight:{...}}, Epic:{...}}) or a flat
+  // class map ({Knight:{...}}). A flat map applies to the currently-selected tier.
+  function applyClassStatsObject(obj) {
+    if (!obj || typeof obj !== "object") return 0;
+    var qKeys = Object.keys(obj).filter(function (k) { return normalizeQuality(k); });
+    if (qKeys.length) {
+      var total = 0;
+      qKeys.forEach(function (k) { total += mergeTier(normalizeQuality(k), obj[k]); });
+      return total;
+    }
+    return mergeTier(state.quality, obj);
+  }
+  function applyClassCSV(text) { return parseClassTable(text, ","); }
+  // Shared parser for the CSV upload (comma) and the in-panel paste box (tab, Excel).
+  // Header-aware: if the first non-empty row's first cell is "class", its column names map the
+  // data in ANY order — recognizes an optional Quality / gear-quality column plus synonyms
+  // (Element=power, "crit dmg"=critDmg, EVA=eva). Stat cells tolerate suffixes like "2x" via
+  // statNum, and blank cells are left untouched. Without a header it falls back to positional
+  // Class[,Quality],HP,ATK,DEF,EVA,Power,CRIT,THREAT,CritDmg (Quality auto-detected in cell 2).
+  function colKeyFor(headerCell) {
+    var n = String(headerCell == null ? "" : headerCell).trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (n === "class" || n === "classname") return "name";
+    if (n === "hp" || n === "health") return "hp";
+    if (n === "atk" || n === "attack") return "atk";
+    if (n === "def" || n === "defense" || n === "defence") return "def";
+    if (n === "eva" || n === "evasion") return "eva";
+    if (n === "element" || n === "power") return "power";
+    if (n === "critdmg" || n === "critdamage" || n === "critx") return "critDmg";
+    if (n === "crit" || n === "critchance" || n === "critrate") return "crit";
+    if (n === "threat") return "threat";
+    if (n === "gearquality" || n === "quality" || n === "tier") return "quality";
+    return null;
+  }
+  function parseClassTable(text, sep) {
+    var rows = (text || "").split(/\r?\n/).filter(function (l) { return l.trim() !== ""; });
+    if (!rows.length) return 0;
+    var colMap = null, startRow = 0;
+    if (colKeyFor(rows[0].split(sep)[0]) === "name") {
+      colMap = {};
+      rows[0].split(sep).forEach(function (cell, i) { var k = colKeyFor(cell); if (k && colMap[k] === undefined) colMap[k] = i; });
+      startRow = 1;
+    }
     var count = 0;
-    text.split(/\r?\n/).forEach(function (line) {
-      if (!line.trim()) return;
-      var parts = line.split(",");
-      var name = (parts[0] || "").trim();
-      if (!state.classStats[name]) {
-        var found = null;
-        Object.keys(state.classStats).forEach(function (k) { if (k.toLowerCase() === name.toLowerCase()) found = k; });
-        if (!found) return; // header row or unknown class
-        name = found;
+    for (var r = startRow; r < rows.length; r++) {
+      var parts = rows[r].split(sep);
+      var name, q;
+      if (colMap) {
+        name = (parts[colMap.name] || "").trim();
+        q = colMap.quality !== undefined ? normalizeQuality(parts[colMap.quality]) : null;
+      } else {
+        name = (parts[0] || "").trim();
+        q = normalizeQuality(parts[1]);
       }
-      var cs = state.classStats[name];
-      CLASS_STAT_KEYS.forEach(function (key, i) { if (parts[i + 1] !== undefined && String(parts[i + 1]).trim() !== "") cs[key] = statNum(parts[i + 1]); });
+      var tbl = state.classStatsByQuality[q || state.quality];
+      if (!tbl) continue;
+      var key = tbl[name] ? name : null;
+      if (!key) { var nl = name.toLowerCase(); Object.keys(tbl).forEach(function (k) { if (k.toLowerCase() === nl) key = k; }); }
+      if (!key) continue; // header row already consumed, or unknown class
+      var cs = tbl[key];
+      for (var si = 0; si < CLASS_STAT_KEYS.length; si++) {
+        var skey = CLASS_STAT_KEYS[si];
+        var idx = colMap ? colMap[skey] : ((q ? 2 : 1) + si);
+        if (idx === undefined) continue;
+        var v = parts[idx];
+        if (v !== undefined && String(v).trim() !== "") cs[skey] = statNum(v);
+      }
       count++;
-    });
+    }
     return count;
   }
   var uploadPanel = document.getElementById("uploadPanel");
@@ -1649,16 +1794,17 @@
       var data;
       try { data = JSON.parse(text); } catch (e) { flashStatus(uploadStatus, "Invalid JSON — " + e.message, 3500); return; }
       var hasRoster = data && Array.isArray(data.parties) && Array.isArray(data.heroes);
-      var hasStats = data && data.classStats && typeof data.classStats === "object";
+      var statsObj = data && (data.classStatsByQuality || data.classStats);
+      var hasStats = statsObj && typeof statsObj === "object";
       if (hasRoster) {
-        if (!hasStats) data.classStats = state.classStats; // preserve current defaults
+        if (!hasStats) data.classStatsByQuality = state.classStatsByQuality; // preserve current defaults (all tiers)
         try { loadJSON(JSON.stringify(data)); } catch (e) { flashStatus(uploadStatus, "Load failed — " + e.message, 3500); return; }
         setUpdate(hasStats ? "Uploaded full data." : "Uploaded roster (kept default stats).");
         render();
         flashStatus(uploadStatus, hasStats ? "Loaded full data ✓" : "Loaded roster (kept default stats) ✓", 3000);
       } else if (hasStats) {
-        var c = applyClassStatsObject(data.classStats); setUpdate("Uploaded default stats (" + c + " classes)."); render();
-        flashStatus(uploadStatus, c + " class" + (c === 1 ? "" : "es") + " updated ✓", 3000);
+        var c = applyClassStatsObject(statsObj); setUpdate("Uploaded default stats (" + c + " class rows)."); render();
+        flashStatus(uploadStatus, c + " class row" + (c === 1 ? "" : "s") + " updated ✓", 3000);
       } else {
         flashStatus(uploadStatus, "JSON needs parties+heroes or classStats", 3500);
       }

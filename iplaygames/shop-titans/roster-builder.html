@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <title>T16 Roster &amp; Party Builder</title>
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" color="#3b82f6">
-  <link rel="stylesheet" href="../css/tailwind.css">
-  <script src="/js/tailwindcss.js"></script>
+  <link rel="icon" type="image/svg+xml" href="../../favicon.svg" color="#3b82f6">
+  <script src="../../js/tailwindcss.js"></script>
   <!-- Page-specific Shop Titans theme (not the shared tailwind-theme.js) -->
   <script src="_js/roster-theme.js"></script>
 </head>
@@ -134,6 +133,21 @@
     <div class="bg-surface border-2 border-borderc rounded-2xl w-[400px] max-w-full p-5 shadow-xl">
       <div id="alertBody" class="text-sm text-textPrimary leading-relaxed whitespace-pre-line mb-4"></div>
       <button id="alertOk" class="btn-primary w-full">OK</button>
+    </div>
+  </div>
+
+  <!-- Generic Confirm/Cancel centered overlay (replaces native confirm(); top-most, closed on load) -->
+  <div id="confirmBackdrop"
+    class="fixed inset-0 bg-black/40 z-[65] opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <div id="confirmModal"
+    class="fixed inset-0 z-[70] flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-surface border-2 border-borderc rounded-2xl w-[460px] max-w-full p-5 shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 id="confirmTitle" class="text-base font-semibold text-textPrimary">Confirm</h2>
+        <button id="confirmCancel" class="btn-white shrink-0" aria-label="Cancel">Cancel</button>
+      </div>
+      <div id="confirmBody" class="text-sm text-textPrimary leading-relaxed mb-4 max-h-[60vh] overflow-y-auto"></div>
+      <button id="confirmOk" class="btn-primary w-full">Confirm</button>
     </div>
   </div>
 
