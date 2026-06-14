@@ -306,18 +306,18 @@
       bestBar *= buff.barrierMult;
       var atk = slots.reduce(function (a, cn) { return a + buffedEffAtk(classAvg(cn, "atk"), classAvg(cn, "crit"), critMultOf(cn), buff); }, 0) +
         (champ ? buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) : 0);
-      var tier;
-      if (slots.length !== cap || bestBar < BARRIER_POWER_TARGET) {
-        tier = 3;
+      var tier, win = 0;
+      var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : Infinity;
+      if (slots.length !== cap || bestBar < BARRIER_POWER_TARGET || rounds >= MZE.roundCap) {
+        tier = 4; // hard fail (D): undermanned, barrier unbroken, or can't kill before the 500-round cap
       } else {
-        var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : Infinity;
-        tier = rounds <= GRADE_ROUNDS.S ? 0 : rounds <= GRADE_ROUNDS.A ? 1 : rounds <= GRADE_ROUNDS.B ? 2 : 3;
-        var units = slots.map(function (cn) { return { hp: classAvg(cn, "hp") * buff.hpMult, def: classAvg(cn, "def") * buff.defMult, eva: classAvg(cn, "eva") + buff.evaAdd, threat: classAvg(cn, "threat"), evaCap: evaCapOf(cn) }; });
-        if (champ) units.push({ hp: (Number(champ.hp) || 0) * buff.hpMult, def: (Number(champ.def) || 0) * buff.defMult, eva: (Number(champ.eva) || 0) + buff.evaAdd, threat: Number(champ.threat) || 0, evaCap: MZE.evaCapDefault });
+        var units = slots.map(function (cn) { return { hp: classAvg(cn, "hp") * buff.hpMult, def: classAvg(cn, "def") * buff.defMult, eva: classAvg(cn, "eva") + buff.evaAdd, threat: classAvg(cn, "threat"), evaCap: evaCapOf(cn), atk: buffedEffAtk(classAvg(cn, "atk"), classAvg(cn, "crit"), critMultOf(cn), buff) }; });
+        if (champ) units.push({ hp: (Number(champ.hp) || 0) * buff.hpMult, def: (Number(champ.def) || 0) * buff.defMult, eva: (Number(champ.eva) || 0) + buff.evaAdd, threat: Number(champ.threat) || 0, evaCap: MZE.evaCapDefault, atk: buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) });
         var saves = slots.reduce(function (a, cn) { return a + classSaves(cn); }, 0);
-        tier = Math.min(3, tier + lethalDemotion(units, rounds, saves));
+        win = winChance(units, rounds, saves);
+        tier = winTier(win);
       }
-      return { tier: tier, align: champCovers(p, el) > 0 ? 1 : 0, atk: atk, bar: bestBar };
+      return { tier: tier, align: champCovers(p, el) > 0 ? 1 : 0, atk: atk, bar: bestBar, win: win };
     }
 
     function mk(className, partyId) {
@@ -401,34 +401,75 @@
   // the crit/crit-damage that drives its damage, and any class skill.
   function explainBuild(p, el, aligned, slots, sc) {
     var champ = getChampion(p.champName);
-    var grade = ["S", "A", "B", "C"][sc.tier];
+    var buff = partyBuff(champ, slots);                                   // THIS party's champion aura
+    var grade = GRADE_LETTERS[sc.tier];
     var rounds = sc.atk > 0 ? Math.ceil(MZE.bossHP / sc.atk) : 0;
-    var why = aligned ? ("matches " + (champ ? champ.name : "the champion") + "’s " + el + " element")
-      : "balances the dark / light / earth barriers across your roster";
-    var out = ["Barrier — covering " + el + " (" + why + "); reaches " + Math.round(sc.bar) + " elemental power vs the 320 needed to break it.", ""];
+    // In-party effective ATK/EVA = class average boosted by THIS champion's aura (matches what the
+    // optimizer scored), so the same class reads differently in another champion's party.
+    function buffEff(cn) { return buffedEffAtk(classAvg(cn, "atk"), classAvg(cn, "crit"), critMultOf(cn), buff); }
+    function buffEva(cn) { return Math.round(classAvg(cn, "eva") + buff.evaAdd); }
+    // Cross-class ranks are aura-invariant (the champ boosts everyone equally) → rank on class avgs.
+    var dpsByAtk = CATALOG.filter(function (c) { return !isTank(c.name) && !fExclude(c.name); }).map(function (c) { return c.name; }).sort(function (a, b) { return effClassAtk(b) - effClassAtk(a); });
+    var topDps = 0; slots.forEach(function (cn, i) { if (i > 0) { var e = buffEff(cn); if (e > topDps) topDps = e; } });
+
+    var why = aligned ? ("aligns with " + (champ ? champ.name : "the champion") + "’s " + el + " element") : "balances dark / light / earth across your roster so a zone change needs fewer rebuilds";
+    var out = ["Barrier — this party breaks " + el + " (" + why + "). It stacks " + Math.round(sc.bar) + " " + el + " power against the 320 needed, so the barrier drops and the team's hits land in full."];
+    if (champ) {
+      var bp = [];
+      if (buff.atkMult > 1) bp.push("+" + Math.round((buff.atkMult - 1) * 100) + "% ATK");
+      if (buff.hpMult > 1) bp.push("+" + Math.round((buff.hpMult - 1) * 100) + "% HP");
+      if (buff.defMult > 1) bp.push("+" + Math.round((buff.defMult - 1) * 100) + "% DEF");
+      if (buff.critAdd) bp.push("+" + buff.critAdd + " crit");
+      if (buff.evaAdd) bp.push("+" + buff.evaAdd + " EVA");
+      if (buff.critDmgAdd) bp.push("+" + buff.critDmgAdd + " crit-dmg");
+      if (buff.barrierMult > 1) bp.push("+" + Math.round((buff.barrierMult - 1) * 100) + "% barrier");
+      out.push("Champion — " + champ.name + " (" + champ.el + "): " + (bp.length ? bp.join(", ") + " to the whole party" : "no combat aura") + " — every eff-ATK below already includes it.");
+    }
+    out.push("");
+
     slots.forEach(function (cn, i) {
-      var elc = CLASS[cn].element, eff = effClassAtk(cn), cd = critMultOf(cn), cr = Math.round(classAvg(cn, "crit"));
-      var critNote = (cd > 2 || cr >= 35) ? " Its " + cr + "% crit at ×" + cd + " crit-damage makes those hits punch well above the base ATK." : "";
-      var skill = CLASS_SKILLS[cn] ? "\n◦ Skill: " + CLASS_SKILLS[cn].text : "";
+      var elc = CLASS[cn].element, eff = buffEff(cn), cd = critMultOf(cn) + (buff.critDmgAdd || 0), cr = Math.round(classAvg(cn, "crit") + (buff.critAdd || 0));
+      var thr = Math.round(classAvg(cn, "threat")), ev = buffEva(cn);
+      var critNote = (cd > 2 || cr >= 35) ? " Its " + cr + "% crit at ×" + cd + " crit-damage punches well above the listed ATK." : "";
+      var sk = CLASS_SKILLS[cn];
+      var skill = sk ? "\n◦ Skill: " + sk.text + (sk.protectAlly || sk.surviveFatal ? " — a free lethal-hit save, a real survivability bump." : "") : "";
+
       if (i === 0) {
-        var tankRank = CATALOG.filter(function (c) { return isTank(c.name) && !fExclude(c.name); }).map(function (c) { return c.name; }).sort(function (a, b) { return effClassAtk(b) - effClassAtk(a); });
-        var lead = tankRank[0] === cn ? "your hardest-hitting tank"
-          : (elc === el ? ("its " + el + " element for Meteor Zone barrier, and it’s a sturdy front-line")
-            : ("picked for bulk + threat to body-block for your carries, over the higher-ATK " + tankRank[0]));
-        out.push("• Tank — " + cn + ": " + lead + ". " + fmtN(eff) + " eff ATK · HP " + fmtN(classAvg(cn, "hp")) + " · DEF " + fmtN(classAvg(cn, "def")) + " · threat " + classAvg(cn, "threat") + "." + critNote + skill);
+        var tankRank = CATALOG.filter(function (c) { return isTank(c.name) && !fExclude(c.name); }).sort(function (a, b) { return effClassAtk(b.name) - effClassAtk(a.name); }).map(function (c) { return c.name; });
+        var lead;
+        if (elc === el) lead = "the " + el + " tank, so it pulls double duty — it soaks the boss up front AND its " + Math.round(classAvg(cn, "power") * buff.barrierMult) + " " + el + " power helps break the barrier, freeing a slot for damage. Threat " + thr + " pulls the boss's hits onto it and off your carries";
+        else lead = "here for bulk + threat (" + thr + ") to body-block — it eats the boss's hits so your squishies live" + (tankRank[0] && tankRank[0] !== cn ? ", and soaking wins the slot over the higher-ATK " + tankRank[0] : "");
+        if (tankRank[0] === cn) lead += " — also your hardest-hitting tank";
+        out.push("• Tank — " + cn + ": " + lead + ". HP " + fmtN(classAvg(cn, "hp") * buff.hpMult) + " · DEF " + fmtN(classAvg(cn, "def") * buff.defMult) + " · threat " + thr + "." + skill);
       } else {
-        var sameEl = CATALOG.filter(function (c) { return c.element === elc && !fExclude(c.name); }).map(function (c) { return c.name; }).sort(function (a, b) { return effClassAtk(b) - effClassAtk(a); });
-        var rank = sameEl.indexOf(cn) + 1, top = sameEl[0];
+        // Hardest same-element DPS IGNORING filters, so we can name the filter reason if it was skipped.
+        var sameElAll = CATALOG.filter(function (c) { return c.element === elc && !isTank(c.name); }).map(function (c) { return c.name; }).sort(function (a, b) { return effClassAtk(b) - effClassAtk(a); });
+        var hardest = sameElAll[0];
+        var gRank = dpsByAtk.indexOf(cn) + 1;
         var covers = (elc === el || elc === "all");
-        var role = covers ? ("breaks the " + el + " barrier (" + Math.round(classAvg(cn, "power") * (elc === "all" ? MZE.allBarrierFactor : 1)) + " pwr) and adds damage")
-          : ("pure damage + " + elc + " depth — keeps the roster ready when the barrier rotates");
-        var rankTxt = rank <= 1 ? ("the top-ATK " + elc + " class") : ("#" + rank + " of your " + elc + " classes by eff ATK (" + top + " hits harder at " + fmtN(effClassAtk(top)) + ", but it’s filtered or already placed)");
-        out.push("• " + cn + " (" + elc + ") — " + role + ". " + fmtN(eff) + " eff ATK, " + rankTxt + "." + critNote + skill);
+        var pwr = Math.round(classAvg(cn, "power") * (elc === "all" ? MZE.allBarrierFactor : 1) * buff.barrierMult);
+        var soaker = topDps > 0 && eff < 0.4 * topDps && ev >= 75; // low damage but high evasion → a survivability pick
+        var line;
+        if (soaker) {
+          line = cn + " (" + elc + ") — not here for damage (only " + fmtN(eff) + " eff ATK); it earns its slot on survival — " + ev + " EVA dodges most of the boss's hits" + (thr >= 50 ? ", and threat " + thr + " pulls fire off your carries" : "") + ", so it rides out the fight (what the win-model rewards)." + (covers ? " It also chips the " + el + " barrier (" + pwr + " pwr)." : "");
+        } else {
+          var whyNot = "";
+          if (hardest && hardest !== cn) {
+            var why2 = fExclude(hardest) ? "but you've excluded it" : (isFinite(fMax(hardest)) ? "but it's capped at max-" + fMax(hardest) : "but it's placed in another party / out-prioritized");
+            whyNot = " — " + hardest + " hits harder (~" + fmtN(buffEff(hardest)) + " here) " + why2;
+          } else if (gRank >= 1 && gRank <= 5) {
+            whyNot = " — your top available " + elc + " DPS, one of your hardest hitters (#" + gRank + " overall)";
+          }
+          var role = covers ? "breaks the " + el + " barrier (" + pwr + " pwr) and brings the damage" : "damage + " + elc + " depth, keeping the roster ready when the barrier rotates";
+          line = cn + " (" + elc + ") — " + role + ": " + fmtN(eff) + " eff ATK" + whyNot + "." + critNote;
+        }
+        out.push("• " + line + skill);
       }
     });
+
     out.push("");
     if (rounds >= MZE.roundCap) out.push("Result — FAILS: ~" + rounds + " rounds to kill the 10M-HP boss exceeds the 500-round limit (auto-loss). Needs far more ATK.");
-    else out.push("Result — grade " + grade + (rounds ? ", ~" + rounds + " rounds to drop the 10M-HP boss (party effective ATK ~" + fmtN(sc.atk) + ")" : "") + ".");
+    else out.push("Result — grade " + grade + ", ~" + Math.round((sc.win || 0) * 100) + "% est. win chance (clears the quest — survivors finish the boss); kills the 10M boss in ~" + rounds + " rounds at ~" + fmtN(sc.atk) + " party ATK.");
     return out.join("\n");
   }
   function addParty() {
@@ -1186,7 +1227,9 @@
   // to a barrier (st-central roster guide ≈ 50%; exact value unconfirmed — tune here when known).
   // roundCap = the quest hard-terminates (auto-fail) at round 500, so a party that can't
   // kill the boss before then simply loses, regardless of survivability.
-  var MZE = { bossHP: 10000000, baseHit: 410, aoeHit: 280, critHit: 615, critChance: 0.10, critPerNegEva: 0.0025, evaPenalty: 20, evaCapDefault: 75, critDmgMod: 2.0, allBarrierFactor: 0.5, roundCap: 500 };
+  var MZE = { bossHP: 10000000, baseHit: 410, aoeHit: 280, aoeChance: 0.225, critHit: 615, critChance: 0.10, critPerNegEva: 0.0025, evaPenalty: 20, evaCapDefault: 75, critDmgMod: 2.0, allBarrierFactor: 0.5, roundCap: 500 };
+  // aoeChance = per-round chance the boss uses an AoE that hits EVERY unit (~20-25% observed;
+  // 0.225 midpoint, tunable). aoeHit (280) is DEF-reduced like a normal hit (~68% of baseHit).
   var STATFIELD = "bg-hoverBg border border-borderc rounded text-textPrimary px-1 py-1 outline-none text-xs font-mono text-right focus:border-accent";
   function statNum(x) { return Number(String(x).replace(/[^0-9.\-]/g, "")) || 0; }
 
@@ -1289,67 +1332,107 @@
     return Math.max(0, Math.min(1, 1 - cdf));
   }
 
-  // Expected unit deaths over the fight → tiers to demote (0..3). The boss makes ~1
-  // single-target hit per round (AoE not modeled yet), targeting a unit by THREAT share
-  // (st-central: target chance = threat / total threat); the unit may DODGE (EVA%, capped).
-  // A unit dies once its ACCUMULATED hits reach its kill count (HP ÷ avg hit) — this
-  // captures both one-shots (frail unit, 1 hit to die) and attrition (wear-down over many
-  // hits), which is why a bulky high-threat tank that soaks the stream protects squishy
-  // carries. Landed hits are Poisson-distributed, so death is unlikely until expected hits
-  // approach the kill count. `saves` = lethal negations (Lord protect / Bishop survive-fatal).
-  // Threat/EVA/DEF curve are from st-central; the per-hit average, hit-per-round assumption,
-  // and rounding to tiers are tunable.
-  function lethalDemotion(units, rounds, saves) {
+  // Expected unit deaths over the fight (raw float). The boss makes ~1 single-target hit per
+  // round (AoE not modeled yet), targeting a unit by THREAT share (st-central: target chance =
+  // threat / total threat); the unit may DODGE (EVA%, capped). A unit dies once its ACCUMULATED
+  // hits reach its kill count (HP ÷ avg hit) — capturing both one-shots (frail, 1 hit) and
+  // attrition (wear-down). Landed hits are Poisson, so death stays unlikely until expected hits
+  // approach the kill count. **More rounds = more exposure = more expected deaths** — this is the
+  // only channel through which kill speed matters (fights auto-skip, so raw duration is free).
+  // `saves` = lethal negations (Lord protect / Bishop survive-fatal). Per-hit average and the
+  // 1-hit/round assumption are tunable; a calibrated value is the deferred Phase-2 sim.
+  // Per-unit death probability over the fight (independent across units). Two damage streams:
+  // single-target (threat-gated → the tank soaks it) + AoE (hits EVERY unit, NOT threat-gated → the
+  // tank can't shield squishies). A unit dies once accumulated landed hits reach its kill count
+  // (HP ÷ avg hit); landed hits are Poisson (`poissonTailGE`). AoE is converted to single-hit-damage
+  // equivalents so the same killHits applies — this is what gives a low-threat glass cannon real risk.
+  function unitDeathProbs(units, rounds) {
     var totalThreat = units.reduce(function (s, u) { return s + (Number(u.threat) || 0); }, 0);
     var n = units.length || 1;
     var r = (isFinite(rounds) && rounds > 0) ? rounds : 60;
-    var expected = 0;
-    units.forEach(function (u) {
-      if (u.hp <= 0) return;
+    return units.map(function (u) {
+      if (u.hp <= 0) return 0;
       var share = totalThreat > 0 ? (Number(u.threat) || 0) / totalThreat : 1 / n;
       var s = survStats(u.hp, u.def, u.eva, u.evaCap);
       var avgDmg = s.normal * (1 - s.critChance) + s.crit * s.critChance; // crit ignores DEF
-      var killHits = avgDmg > 0 ? Math.max(1, Math.ceil(u.hp / avgDmg)) : Infinity; // landed hits to die
-      var lambda = r * share * (1 - s.dodge);                            // expected landed hits
-      expected += poissonTailGE(lambda, killHits);                       // P(this unit dies)
+      var killHits = avgDmg > 0 ? Math.max(1, Math.ceil(u.hp / avgDmg)) : Infinity;
+      var aoeDmg = MZE.aoeHit * mzeDefMult(u.def);                        // DEF-reduced AoE hit
+      var aoeEquivHits = avgDmg > 0 ? r * MZE.aoeChance * (1 - s.dodge) * (aoeDmg / avgDmg) : 0;
+      var lambda = r * share * (1 - s.dodge) + aoeEquivHits;             // single-hit-equiv landed hits
+      return poissonTailGE(lambda, killHits);
     });
-    expected = Math.max(0, expected - (Number(saves) || 0)); // class skills negate one death
-    return Math.max(0, Math.min(3, Math.round(expected)));
   }
+  // Estimated win chance (0..1) = P(the party CLEARS the quest) — "not wiped", not "no losses".
+  // A casualty only matters if it costs enough DPS that the survivors can't kill the 10M boss before
+  // the 500-round cap. So losing a squishy is fine when the rest still kill in time; losing your
+  // damage core (or the whole party) is a loss. Enumerates the 2^n survivor subsets from independent
+  // per-unit death probs (n ≤ ~5). A faster kill = more DPS headroom to absorb losses; a near-cap
+  // party can't afford to lose a carry. `saves` (Lord/Bishop) shield the highest-risk allies.
+  // Calibrated probability is the deferred Phase-2 Monte Carlo; this is a closed-form estimate.
+  function winChance(units, rounds, saves) {
+    var n = units.length;
+    if (!n) return 0;
+    var p = unitDeathProbs(units, rounds);
+    var order = p.map(function (v, i) { return i; }).sort(function (a, b) { return p[b] - p[a]; });
+    for (var k = 0; k < Math.floor(Number(saves) || 0) && k < order.length; k++) p[order[k]] = 0; // saves shield the likeliest deaths
+    var minAtk = MZE.bossHP / MZE.roundCap; // ATK floor to kill before the round cap
+    var win = 0;
+    for (var mask = 0; mask < (1 << n); mask++) {          // bit set = unit SURVIVES
+      var prob = 1, survAtk = 0, alive = 0;
+      for (var i = 0; i < n; i++) {
+        if (mask & (1 << i)) { prob *= (1 - p[i]); survAtk += (Number(units[i].atk) || 0); alive++; }
+        else { prob *= p[i]; }
+      }
+      if (prob <= 0) continue;
+      if (alive > 0 && survAtk > minAtk) win += prob; // survivors retain enough DPS to clear in time
+    }
+    return Math.max(0, Math.min(1, win));
+  }
+  // est. win-chance thresholds for the face (tune freely). D = "almost certainly a loss" (≤20%).
+  var WIN_BANDS = { S: 0.95, A: 0.75, B: 0.65, D: 0.20 };
+  function winTier(w) { return w >= WIN_BANDS.S ? 0 : w >= WIN_BANDS.A ? 1 : w >= WIN_BANDS.B ? 2 : w > WIN_BANDS.D ? 3 : 4; }
+  var GRADE_LETTERS = ["S", "A", "B", "C", "D"];
   function partyUnits(hs, champ, buff) {
     buff = buff || partyBuff(null, []);
     var units = hs.map(function (h) {
-      return { hp: heroStat(h, "hp") * buff.hpMult, def: heroStat(h, "def") * buff.defMult, eva: heroStat(h, "eva") + buff.evaAdd, threat: heroStat(h, "threat"), evaCap: evaCapOf(h.className) };
+      return { hp: heroStat(h, "hp") * buff.hpMult, def: heroStat(h, "def") * buff.defMult, eva: heroStat(h, "eva") + buff.evaAdd, threat: heroStat(h, "threat"), evaCap: evaCapOf(h.className), atk: buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), critMultOf(h.className), buff) };
     });
-    if (champ) units.push({ hp: (Number(champ.hp) || 0) * buff.hpMult, def: (Number(champ.def) || 0) * buff.defMult, eva: (Number(champ.eva) || 0) + buff.evaAdd, threat: Number(champ.threat) || 0, evaCap: MZE.evaCapDefault });
+    if (champ) units.push({ hp: (Number(champ.hp) || 0) * buff.hpMult, def: (Number(champ.def) || 0) * buff.defMult, eva: (Number(champ.eva) || 0) + buff.evaAdd, threat: Number(champ.threat) || 0, evaCap: MZE.evaCapDefault, atk: buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) });
     return units;
   }
 
-  // Win-chance grade (S/A/B/C → the face). Gate: full team + a barrier ≥320. Then
-  // kill speed = crit-boosted ATK vs boss HP → tier, demoted by expected one-shot
-  // losses (threat-share targeting × dodge × per-hit lethality).
-  var GRADE_ROUNDS = { S: 28, A: 40, B: 60 }; // rounds-to-kill thresholds (tune freely)
-  function partyGrade(p) {
+  // Full party outcome → the face icon. The grade is the ESTIMATED WIN CHANCE, not raw speed:
+  //   • Hard fails (win 0%): undermanned, barrier not broken (≥320), or can't kill the 10M boss
+  //     before the 500-round cap (auto-loss).
+  //   • Otherwise grade by est. win % = P(no losses over the kill duration) → S/A/B/C (WIN_BANDS).
+  // Kill speed (rounds) only matters via exposure: more rounds = more boss hits = lower win%.
+  // So a slow-but-unkillable party rightly grades high, and a fast-but-fragile one rightly drops.
+  function partyOutcome(p) {
     var hs = state.heroes.filter(function (h) { return h.partyId === p.id; });
-    var full = hs.length === partyCap(p);
     var champ = getChampion(p.champName);
     var buff = partyBuff(champ, hs.map(function (h) { return h.className; }));
-    var passes = partyBestBarrier(p, hs) * buff.barrierMult >= BARRIER_POWER_TARGET;
-    if (!full || !passes) return "C"; // can't beat the boss: gate not met or undermanned
     var atk = hs.reduce(function (a, h) { return a + buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), critMultOf(h.className), buff); }, 0) +
       (champ ? buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) : 0);
     var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : Infinity;
-    if (rounds >= MZE.roundCap) return "C"; // can't kill before the round-500 auto-fail
-    var tier = rounds <= GRADE_ROUNDS.S ? 0 : rounds <= GRADE_ROUNDS.A ? 1 : rounds <= GRADE_ROUNDS.B ? 2 : 3;
+    if (hs.length !== partyCap(p)) return { grade: "D", winPct: 0, fail: true, reason: "undermanned", rounds: rounds };
+    if (partyBestBarrier(p, hs) * buff.barrierMult < BARRIER_POWER_TARGET) return { grade: "D", winPct: 0, fail: true, reason: "barrier", rounds: rounds };
+    if (rounds >= MZE.roundCap) return { grade: "D", winPct: 0, fail: true, reason: "roundcap", rounds: rounds };
     var saves = hs.reduce(function (a, h) { return a + classSaves(h.className); }, 0);
-    tier = Math.min(3, tier + lethalDemotion(partyUnits(hs, champ, buff), rounds, saves));
-    return ["S", "A", "B", "C"][tier];
+    var w = winChance(partyUnits(hs, champ, buff), rounds, saves);
+    return { grade: GRADE_LETTERS[winTier(w)], winPct: Math.round(w * 100), fail: false, reason: null, rounds: rounds };
   }
+  function partyGrade(p) { return partyOutcome(p).grade; }
   function gradeImg(p) {
-    var g = partyGrade(p);
-    return '<img src="' + IMG_DIR + g + '.png" alt="Rank ' + g + '" ' +
-      'title="Win-chance ' + g + ' — barrier + full team + crit-boosted kill-speed (ATK vs 10M HP), demoted by expected 1-shot losses (threat-share targeting × dodge)." ' +
-      'class="w-8 h-8 shrink-0 object-contain" onerror="this.style.display=\'none\'">';
+    var o = partyOutcome(p);
+    var tip = o.fail
+      ? "Estimated win chance: 0% — " + (o.reason === "barrier" ? "barrier not broken" : o.reason === "roundcap" ? "can't kill before the 500-round cap" : "party not full")
+      : "Estimated win chance: " + o.winPct + "%";
+    var t = escA(tip);
+    // data-info routes the click through the same popover the ⓘ markers use (delegated handler below).
+    // If the image is missing, fall back to a clickable letter that keeps the same data-info popover.
+    return '<span data-info="' + t + '" class="shrink-0 cursor-pointer hover:brightness-110" title="' + t + '">' +
+      '<img src="' + IMG_DIR + o.grade + '.png" alt="Rank ' + o.grade + '" class="w-8 h-8 object-contain pointer-events-none" ' +
+      'onerror="this.outerHTML=\'<b class=&quot;text-[#FBBF24]&quot;>' + o.grade + '</b>\'"></span>';
   }
 
   var statsPanel = document.getElementById("statsPanel");
@@ -1499,14 +1582,18 @@
     var summary = state.parties.map(function (p) {
       var hs = state.heroes.filter(function (x) { return x.partyId === p.id; });
       var champ = getChampion(p.champName);
-      var buff = partyBuff(champ, hs.map(function (x) { return x.className; }));
-      var atk = hs.reduce(function (a, x) { return a + buffedEffAtk(heroStat(x, "atk"), heroStat(x, "crit"), critMultOf(x.className), buff); }, 0) +
-        (champ ? buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) : 0);
-      var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : 0;
+      var o = partyOutcome(p);
+      var rounds = isFinite(o.rounds) ? o.rounds : 0;
       var risky = hs.filter(function (x) { return survivability(x).flag === "risk"; }).length + (champ && champSurv(champ).flag === "risk" ? 1 : 0);
+      // win/grade is the headline; rounds-to-kill stays as info (matters only via exposure + the 500 cap).
+      var winColor = o.fail ? COL.rose : (o.winPct >= 75 ? COL.emerald : o.winPct >= 55 ? COL.amber : COL.rose);
+      var winLabel = o.fail
+        ? (o.reason === "barrier" ? "✗ barrier" : o.reason === "roundcap" ? "✗ 500-cap" : "incomplete")
+        : "~" + o.winPct + "% win · " + o.grade;
       return '<div class="flex items-center gap-2 bg-surface border-2 border-borderc rounded-lg px-3 py-1.5 text-xs">' +
         '<span class="flex-1 min-w-0 truncate">' + escH(p.name) + '</span>' +
-        '<span class="font-mono ' + (atk > 0 && rounds < MZE.roundCap ? "text-textSecondary" : "") + '" ' + (atk > 0 && rounds >= MZE.roundCap ? 'style="color:' + COL.rose + '"' : "") + '>' + (atk <= 0 ? "no ATK" : (rounds >= MZE.roundCap ? "✗ " + rounds + " rds (500-cap fail)" : "~" + rounds + " rounds")) + '</span>' +
+        '<span class="font-bold" style="color:' + winColor + '">' + winLabel + '</span>' +
+        '<span class="font-mono text-textSecondary" title="rounds to kill the 10M boss (info only — fights auto-skip)">' + (rounds <= 0 ? "no ATK" : (rounds >= MZE.roundCap ? "✗ " + rounds + " rds" : "~" + rounds + " rds")) + '</span>' +
         (risky ? '<span class="font-bold" style="color:' + COL.rose + '">⚠ ' + risky + ' 1-shot</span>' : '<span style="color:' + COL.emerald + '">✓ tanky</span>') +
       '</div>';
     }).join("");
