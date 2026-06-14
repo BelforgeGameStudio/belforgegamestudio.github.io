@@ -1557,13 +1557,49 @@
   /* ---------------- Share / Download / Upload ---------------- */
   var CLASS_STAT_KEYS = ["hp", "atk", "def", "eva", "power", "crit", "threat", "critDmg"];
 
-  // Share: centered overlay (opacity-toggled, not a slide panel). Link is the page URL for
-  // now (bookmark) — encoding the roster into the link is a future enhancement.
+  // Share link codec: full toJSON() -> deflate-raw (native CompressionStream) -> base64url, carried
+  // in the URL #r= hash. Self-contained (roster + gear tiers + champions), no server. ~4KB link.
+  var SHARE_SUPPORTED = typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined";
+  function bytesToB64url(bytes) {
+    var bin = ""; for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function b64urlToBytes(s) {
+    s = String(s).replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
+    var bin = atob(s), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function deflateRaw(str) { // -> Promise<Uint8Array>
+    var cs = new CompressionStream("deflate-raw"), w = cs.writable.getWriter();
+    w.write(new TextEncoder().encode(str)); w.close();
+    return new Response(cs.readable).arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+  }
+  function inflateRaw(bytes) { // -> Promise<string>
+    var ds = new DecompressionStream("deflate-raw"), w = ds.writable.getWriter();
+    w.write(bytes); w.close();
+    return new Response(ds.readable).arrayBuffer().then(function (ab) { return new TextDecoder().decode(ab); });
+  }
+  function encodeShareLink() { // -> Promise<string> full URL with #r= hash
+    return deflateRaw(toJSON()).then(function (bytes) { return location.origin + location.pathname + "#r=" + bytesToB64url(bytes); });
+  }
+
+  // Share: centered overlay (opacity-toggled, not a slide panel). Generates a self-contained link
+  // that encodes the full roster into the #r= hash (falls back to the bare URL if unsupported).
   var shareModal = document.getElementById("shareModal");
   var shareBackdrop = document.getElementById("shareBackdrop");
   var shareText = document.getElementById("shareText");
+  var bareUrl = function () { return location.origin + location.pathname; };
   function openShare() {
-    if (shareText) shareText.value = window.location.href;
+    if (shareText) {
+      if (SHARE_SUPPORTED) {
+        shareText.value = "Generating link…";
+        encodeShareLink().then(function (url) { if (shareText) shareText.value = url; })
+          .catch(function () { if (shareText) shareText.value = bareUrl(); });
+      } else {
+        shareText.value = bareUrl();
+      }
+    }
     [shareModal, shareBackdrop].forEach(function (el) { if (el) el.classList.remove("opacity-0", "pointer-events-none"); });
   }
   function closeShare() { [shareModal, shareBackdrop].forEach(function (el) { if (el) el.classList.add("opacity-0", "pointer-events-none"); }); }
@@ -2049,4 +2085,16 @@
   // Auto Sort is now a button inside the roster row; handled in the delegated app click listener.
 
   render();
+
+  // If the URL carries a shared roster (#r=...), decode it (async) and load over the default.
+  // Leaving the hash in place keeps the link bookmarkable — a refresh returns to the shared roster.
+  (function () {
+    if (!SHARE_SUPPORTED) return;
+    var m = String(location.hash || "").match(/[#&]r=([^&]+)/);
+    if (!m) return;
+    inflateRaw(b64urlToBytes(m[1])).then(function (json) {
+      try { loadJSON(json); setUpdate("Loaded a shared roster from the link."); render(); }
+      catch (e) { /* shared data invalid — keep the current roster */ }
+    }).catch(function () { /* corrupt/garbled link — keep the current roster */ });
+  })();
 })();
