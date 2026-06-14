@@ -1667,8 +1667,15 @@
     w.write(bytes); w.close();
     return new Response(ds.readable).arrayBuffer().then(function (ab) { return new TextDecoder().decode(ab); });
   }
-  function encodeShareLink() { // -> Promise<string> full URL with #r= hash
-    return deflateRaw(toJSON()).then(function (bytes) { return location.origin + location.pathname + "#r=" + bytesToB64url(bytes); });
+  function encodeShareLink(compact) { // -> Promise<string> full URL with #r= hash
+    // Always drop the per-quality stat TABLES (≈80% of the payload) — identical on the recipient's
+    // page (baked into roster-data.js), so they're supplied locally on load.
+    var o = JSON.parse(toJSON());
+    delete o.classStatsByQuality;
+    // Compact ("Discord") link: also drop each hero's override stats → composition only. Heroes
+    // load with null stats and inherit class averages at the viewer's gear tier (~1.3KB total).
+    if (compact) o.heroes = o.heroes.map(function (h) { return { id: h.id, name: h.name, className: h.className, partyId: h.partyId }; });
+    return deflateRaw(JSON.stringify(o)).then(function (bytes) { return location.origin + location.pathname + "#r=" + bytesToB64url(bytes); });
   }
 
   // Share: centered overlay (opacity-toggled, not a slide panel). Generates a self-contained link
@@ -1677,12 +1684,15 @@
   var shareBackdrop = document.getElementById("shareBackdrop");
   var shareText = document.getElementById("shareText");
   var bareUrl = function () { return location.origin + location.pathname; };
+  var _compactLink = ""; // pre-generated composition-only link for the Discord button
   function openShare() {
+    _compactLink = "";
     if (shareText) {
       if (SHARE_SUPPORTED) {
         shareText.value = "Generating link…";
-        encodeShareLink().then(function (url) { if (shareText) shareText.value = url; })
+        encodeShareLink(false).then(function (url) { if (shareText) shareText.value = url; })
           .catch(function () { if (shareText) shareText.value = bareUrl(); });
+        encodeShareLink(true).then(function (url) { _compactLink = url; }).catch(function () { _compactLink = ""; });
       } else {
         shareText.value = bareUrl();
       }
@@ -1697,6 +1707,8 @@
   if (shareBackdrop) shareBackdrop.addEventListener("click", closeShare);
   if (shareModal) shareModal.addEventListener("click", function (e) { if (e.target === shareModal) closeShare(); }); // click outside the card
   wireCopyButton(document.getElementById("shareCopyBtn"), shareText);
+  // Discord button copies the pre-generated compact (composition-only) link; falls back to the full link.
+  wireCopyButton(document.getElementById("shareDiscordBtn"), function () { return _compactLink || (shareText ? shareText.value : bareUrl()); });
 
   // "Why I chose this" centered overlay (Recommended reasoning) — same open/close pattern as Share.
   var reasonModal = document.getElementById("reasonModal");
@@ -2180,8 +2192,14 @@
     var m = String(location.hash || "").match(/[#&]r=([^&]+)/);
     if (!m) return;
     inflateRaw(b64urlToBytes(m[1])).then(function (json) {
-      try { loadJSON(json); setUpdate("Loaded a shared roster from the link."); render(); }
-      catch (e) { /* shared data invalid — keep the current roster */ }
+      try {
+        var data = JSON.parse(json);
+        // Links omit the gear-tier stat tables — keep this page's own (baked-in) tables.
+        if (!data.classStatsByQuality) data.classStatsByQuality = state.classStatsByQuality;
+        loadJSON(JSON.stringify(data));
+        setUpdate("Loaded a shared roster from the link.");
+        render();
+      } catch (e) { /* shared data invalid — keep the current roster */ }
     }).catch(function () { /* corrupt/garbled link — keep the current roster */ });
   })();
 })();
