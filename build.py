@@ -10,6 +10,8 @@ Usage:
 import subprocess
 import sys
 import os
+import re
+import time
 from pathlib import Path
 
 # Fix Unicode output on Windows consoles
@@ -55,6 +57,42 @@ def build_html():
     print(f'\n✓ Built {count} HTML file(s)')
     return count
 
+# Pages whose local .js/.css references get a cache-busting ?v=<build id> stamped on each build,
+# so visitors always fetch fresh assets after a deploy (no stale-cache surprises). These pages are
+# maintained directly (not via the src/ partial build), so we rewrite them in place.
+VERSIONED_HTML = [
+    ROOT / 'iplaygames' / 'shop-titans' / 'roster-builder.html',
+]
+
+def build_id():
+    """A value that changes every deploy: short git SHA, else a timestamp."""
+    try:
+        r = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=ROOT,
+                            capture_output=True, text=True, shell=(sys.platform == 'win32'))
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return time.strftime('%Y%m%d%H%M%S')
+
+def stamp_asset_versions():
+    """Add/refresh ?v=<build id> on local .js/.css <script>/<link> URLs in VERSIONED_HTML."""
+    v = build_id()
+    # match  src="…foo.js"  or  href="…bar.css"  with an optional existing ?v=… to replace
+    pat = re.compile(r'(\b(?:src|href)=")([^"?]+\.(?:js|css))(?:\?v=[^"]*)?(")')
+    print('\nStamping asset versions (?v=' + v + ')...')
+    for f in VERSIONED_HTML:
+        if not f.exists():
+            print(f'  (skip, not found) {f.relative_to(ROOT)}')
+            continue
+        txt = f.read_text(encoding='utf-8')
+        new = pat.sub(lambda m: m.group(1) + m.group(2) + '?v=' + v + m.group(3), txt)
+        if new != txt:
+            f.write_text(new, encoding='utf-8')
+            print(f'  ✓ {f.relative_to(ROOT)}')
+        else:
+            print(f'  (no local assets) {f.relative_to(ROOT)}')
+
 def build_css():
     """Build Tailwind CSS."""
     print('\nBuilding Tailwind CSS...')
@@ -81,7 +119,10 @@ def main():
     
     # Always build HTML
     build_html()
-    
+
+    # Cache-bust local assets on standalone pages (e.g. the shop-titans tool)
+    stamp_asset_versions()
+
     # Build CSS if --full flag or if tailwind.css doesn't exist
     tailwind_css = ROOT / 'css' / 'tailwind.css'
     if '--full' in sys.argv or not tailwind_css.exists():
