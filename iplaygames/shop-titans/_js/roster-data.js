@@ -152,14 +152,14 @@ window.T16_ROSTER_JSON = `
       "Sensei": {"hp": 1555, "atk": 36359, "def": 24605, "eva": 98, "power": 210, "crit": 82, "threat": 30, "critDmg": 3},
       "Acrobat": {"hp": 2282, "atk": 59088, "def": 34713, "eva": 97, "power": 215, "crit": 20, "threat": 40, "critDmg": 4.5},
       "Praetorian": {"hp": 1710, "atk": 19796, "def": 40946, "eva": 96, "power": 220, "crit": 32, "threat": 60, "critDmg": 3},
+      "Trickster": {"hp": 2425, "atk": 36359, "def": 27771, "eva": 74, "power": 220, "crit": 32, "threat": 20, "critDmg": 2},
       "Archmage": {"hp": 2867, "atk": 289739, "def": 21700, "eva": 0, "power": 215, "crit": 20, "threat": 10, "critDmg": 2},
       "Bishop": {"hp": 3431, "atk": 150096, "def": 24745, "eva": 0, "power": 245, "crit": 20, "threat": 10, "critDmg": 2},
       "Arch Druid": {"hp": 2421, "atk": 224755, "def": 12094, "eva": 0, "power": 220, "crit": 23, "threat": 5, "critDmg": 2},
       "Warlock": {"hp": 2723, "atk": 274371, "def": 13754, "eva": 0, "power": 230, "crit": 20, "threat": 10, "critDmg": 2},
       "Spellknight": {"hp": 3817, "atk": 131978, "def": 29059, "eva": 0, "power": 255, "crit": 20, "threat": 10, "critDmg": 2},
       "Astramancer": {"hp": 5394, "atk": 207352, "def": 16775, "eva": 0, "power": 240, "crit": 20, "threat": 10, "critDmg": 2},
-      "Fateweaver": {"hp": 3236, "atk": 89584, "def": 24448, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2},
-      "Trickster": {"hp": 2425, "atk": 36359, "def": 27771, "eva": 74, "power": 220, "crit": 32, "threat": 20, "critDmg": 2}
+      "Fateweaver": {"hp": 3236, "atk": 89584, "def": 24448, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2}
     },
     "Epic": {
       "Mercenary": {"hp": 5531, "atk": 19473, "def": 40631, "eva": 0, "power": 240, "crit": 5, "threat": 80, "critDmg": 2},
@@ -175,14 +175,14 @@ window.T16_ROSTER_JSON = `
       "Sensei": {"hp": 1358, "atk": 26980, "def": 18050, "eva": 98, "power": 210, "crit": 82, "threat": 30, "critDmg": 3},
       "Acrobat": {"hp": 1905, "atk": 41742, "def": 25492, "eva": 97, "power": 215, "crit": 20, "threat": 40, "critDmg": 4.5},
       "Praetorian": {"hp": 1536, "atk": 18392, "def": 30122, "eva": 96, "power": 220, "crit": 32, "threat": 60, "critDmg": 3},
+      "Trickster": {"hp": 2097, "atk": 26980, "def": 20179, "eva": 74, "power": 220, "crit": 32, "threat": 20, "critDmg": 2},
       "Archmage": {"hp": 2371, "atk": 204121, "def": 16011, "eva": 0, "power": 215, "crit": 20, "threat": 10, "critDmg": 2},
       "Bishop": {"hp": 2847, "atk": 106472, "def": 18563, "eva": 0, "power": 245, "crit": 20, "threat": 10, "critDmg": 2},
       "Arch Druid": {"hp": 1953, "atk": 159845, "def": 9073, "eva": 0, "power": 220, "crit": 23, "threat": 5, "critDmg": 2},
       "Warlock": {"hp": 2162, "atk": 193428, "def": 10415, "eva": 0, "power": 230, "crit": 20, "threat": 10, "critDmg": 2},
-      "Spellknight": {"hp": 3125, "atk": 94611, "def": 21564, "eva": 0, "power": 255, "crit": 20, "threat": 10, "critDmg": 2},
+      "Spellknight": {"hp": 2977, "atk": 92851, "def": 20796, "eva": 0, "power": 255, "crit": 20, "threat": 10, "critDmg": 2},
       "Astramancer": {"hp": 4339, "atk": 146847, "def": 12516, "eva": 0, "power": 240, "crit": 20, "threat": 10, "critDmg": 2},
-      "Fateweaver": {"hp": 2651, "atk": 66282, "def": 18266, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2},
-      "Trickster": {"hp": 2097, "atk": 26980, "def": 20179, "eva": 74, "power": 220, "crit": 32, "threat": 20, "critDmg": 2}
+      "Fateweaver": {"hp": 2651, "atk": 66282, "def": 18266, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2}
     },
     "Flawless": {
       "Mercenary": {"hp": 4952, "atk": 16204, "def": 33345, "eva": 0, "power": 240, "crit": 5, "threat": 80, "critDmg": 2},
@@ -198,15 +198,15 @@ window.T16_ROSTER_JSON = `
       "Sensei": {"hp": 1258, "atk": 22288, "def": 14772, "eva": 98, "power": 210, "crit": 82, "threat": 30, "critDmg": 3},
       "Acrobat": {"hp": 1713, "atk": 33068, "def": 20882, "eva": 97, "power": 215, "crit": 20, "threat": 40, "critDmg": 4.5},
       "Praetorian": {"hp": 1449, "atk": 17690, "def": 24710, "eva": 96, "power": 220, "crit": 32, "threat": 60, "critDmg": 3},
+      "Trickster": {"hp": 1931, "atk": 22288, "def": 16383, "eva": 74, "power": 220, "crit": 32, "threat": 20, "critDmg": 2},
       "Archmage": {"hp": 2120, "atk": 161312, "def": 13167, "eva": 0, "power": 215, "crit": 20, "threat": 10, "critDmg": 2},
       "Bishop": {"hp": 2552, "atk": 84660, "def": 15472, "eva": 0, "power": 245, "crit": 20, "threat": 10, "critDmg": 2},
       "Arch Druid": {"hp": 1716, "atk": 127374, "def": 7562, "eva": 0, "power": 220, "crit": 23, "threat": 5, "critDmg": 2},
       "Warlock": {"hp": 1879, "atk": 152957, "def": 8745, "eva": 0, "power": 230, "crit": 20, "threat": 10, "critDmg": 2},
-      "Spellknight": {"hp": 2775, "atk": 75922, "def": 17815, "eva": 0, "power": 255, "crit": 20, "threat": 10, "critDmg": 2},
+      "Spellknight": {"hp": 2627, "atk": 74162, "def": 17047, "eva": 0, "power": 255, "crit": 20, "threat": 10, "critDmg": 2},
       "Astramancer": {"hp": 3810, "atk": 116597, "def": 10386, "eva": 0, "power": 240, "crit": 20, "threat": 10, "critDmg": 2},
-      "Fateweaver": {"hp": 2354, "atk": 54631, "def": 15175, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2},
-      "Trickster": {"hp": 1931, "atk": 22288, "def": 16383, "eva": 74, "power": 220, "crit": 32, "threat": 20, "critDmg": 2}
-    },
+      "Fateweaver": {"hp": 2354, "atk": 54631, "def": 15175, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2}
+      },
     "Superior": {
       "Mercenary": {"hp": 4660, "atk": 14568, "def": 29696, "eva": 0, "power": 240, "crit": 5, "threat": 80, "critDmg": 2},
       "Chieftain": {"hp": 5588, "atk": 30303, "def": 34181, "eva": 0, "power": 240, "crit": 5, "threat": 250, "critDmg": 2},
@@ -221,14 +221,14 @@ window.T16_ROSTER_JSON = `
       "Sensei": {"hp": 1208, "atk": 19940, "def": 13127, "eva": 98, "power": 210, "crit": 82, "threat": 30, "critDmg": 3},
       "Acrobat": {"hp": 1619, "atk": 28727, "def": 18568, "eva": 97, "power": 215, "crit": 20, "threat": 40, "critDmg": 4.5},
       "Praetorian": {"hp": 1404, "atk": 17338, "def": 21998, "eva": 96, "power": 220, "crit": 32, "threat": 60, "critDmg": 3},
+      "Trickster": {"hp": 1847, "atk": 19940, "def": 14479, "eva": 74, "power": 220, "crit": 32, "threat": 20, "critDmg": 2},
       "Archmage": {"hp": 1996, "atk": 139904, "def": 11739, "eva": 0, "power": 215, "crit": 20, "threat": 10, "critDmg": 2},
       "Bishop": {"hp": 2405, "atk": 73752, "def": 13921, "eva": 0, "power": 245, "crit": 20, "threat": 10, "critDmg": 2},
       "Arch Druid": {"hp": 1599, "atk": 111141, "def": 6805, "eva": 0, "power": 220, "crit": 23, "threat": 5, "critDmg": 2},
       "Warlock": {"hp": 1736, "atk": 132722, "def": 7908, "eva": 0, "power": 230, "crit": 20, "threat": 10, "critDmg": 2},
-      "Spellknight": {"hp": 2599, "atk": 66566, "def": 15934, "eva": 0, "power": 255, "crit": 20, "threat": 10, "critDmg": 2},
+      "Spellknight": {"hp": 2451, "atk": 64806, "def": 15166, "eva": 0, "power": 255, "crit": 20, "threat": 10, "critDmg": 2},
       "Astramancer": {"hp": 3541, "atk": 101456, "def": 9323, "eva": 0, "power": 240, "crit": 20, "threat": 10, "critDmg": 2},
-      "Fateweaver": {"hp": 2207, "atk": 48800, "def": 13624, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2},
-      "Trickster": {"hp": 1847, "atk": 19940, "def": 14479, "eva": 74, "power": 220, "crit": 32, "threat": 20, "critDmg": 2}
+      "Fateweaver": {"hp": 2207, "atk": 48800, "def": 13624, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2}
     }
   },
   "classOrder": [
@@ -242,6 +242,7 @@ window.T16_ROSTER_JSON = `
     "Spellknight",
     "Death Knight",
     "Praetorian",
+    "Trickster",
     "Lord",
     "Jarl",
     "Fateweaver",
@@ -251,8 +252,7 @@ window.T16_ROSTER_JSON = `
     "Daimyo",
     "Arch Druid",
     "Bishop",
-    "Archmage",
-    "Trickster"
+    "Archmage"
   ],
   "parties": [
     {
