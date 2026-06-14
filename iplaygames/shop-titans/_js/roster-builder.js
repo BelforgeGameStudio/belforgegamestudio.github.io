@@ -361,7 +361,7 @@
     // term ties and your Class Priority list decides the discretionary slots (no longer spreads
     // for spreading's sake). Raise the floor to spread more before priority kicks in; lower it
     // to honor priority sooner. Barrier-forced dark/light/earth presence is unaffected (hard req).
-    var BREADTH_FLOOR = 2; // keep every element barrier-capable (~2), then Class Priority drives the rest
+    var BREADTH_FLOOR = 3; // match the Roster Health "3+ per element" target so no element is left red
     // A breadth swap must be truly (near-)free: it may not drop the party's est. win % by more than
     // this. Without it, `diversify` would happily trade a 95%-win nuker for an off-element low-DPS
     // class just because the coarse S/A/B/C tier "held" — exactly what made Recommended grades sag.
