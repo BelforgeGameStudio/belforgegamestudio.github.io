@@ -1346,12 +1346,12 @@
   // tank can't shield squishies). A unit dies once accumulated landed hits reach its kill count
   // (HP ÷ avg hit); landed hits are Poisson (`poissonTailGE`). AoE is converted to single-hit-damage
   // equivalents so the same killHits applies — this is what gives a low-threat glass cannon real risk.
-  function unitDeathProbs(units, rounds) {
+  function unitDeathModel(units, rounds) { // per-unit { lambda: expected single-hit-equiv landed hits, killHits: hits to die }
     var totalThreat = units.reduce(function (s, u) { return s + (Number(u.threat) || 0); }, 0);
     var n = units.length || 1;
     var r = (isFinite(rounds) && rounds > 0) ? rounds : 60;
     return units.map(function (u) {
-      if (u.hp <= 0) return 0;
+      if (u.hp <= 0) return { lambda: 0, killHits: Infinity };
       var share = totalThreat > 0 ? (Number(u.threat) || 0) / totalThreat : 1 / n;
       var s = survStats(u.hp, u.def, u.eva, u.evaCap);
       var avgDmg = s.normal * (1 - s.critChance) + s.crit * s.critChance; // crit ignores DEF
@@ -1359,7 +1359,7 @@
       var aoeDmg = MZE.aoeHit * mzeDefMult(u.def);                        // DEF-reduced AoE hit
       var aoeEquivHits = avgDmg > 0 ? r * MZE.aoeChance * (1 - s.dodge) * (aoeDmg / avgDmg) : 0;
       var lambda = r * share * (1 - s.dodge) + aoeEquivHits;             // single-hit-equiv landed hits
-      return poissonTailGE(lambda, killHits);
+      return { lambda: lambda, killHits: killHits };
     });
   }
   // Estimated win chance (0..1) = P(the party CLEARS the quest) — "not wiped", not "no losses".
@@ -1372,9 +1372,16 @@
   function winChance(units, rounds, saves) {
     var n = units.length;
     if (!n) return 0;
-    var p = unitDeathProbs(units, rounds);
+    var m = unitDeathModel(units, rounds);
+    var p = m.map(function (d) { return poissonTailGE(d.lambda, d.killHits); });
+    // A save (Lord protect / Bishop survive-fatal) revives its ally to 1 HP on the first lethal hit,
+    // so it dies only after ONE MORE landed hit → killHits + 1 (NOT full immunity). One save per
+    // Lord/Bishop, applied to the current highest-risk unit(s).
     var order = p.map(function (v, i) { return i; }).sort(function (a, b) { return p[b] - p[a]; });
-    for (var k = 0; k < Math.floor(Number(saves) || 0) && k < order.length; k++) p[order[k]] = 0; // saves shield the likeliest deaths
+    for (var k = 0; k < Math.floor(Number(saves) || 0) && k < order.length; k++) {
+      var si = order[k];
+      p[si] = poissonTailGE(m[si].lambda, m[si].killHits + 1);
+    }
     var minAtk = MZE.bossHP / MZE.roundCap; // ATK floor to kill before the round cap
     var win = 0;
     for (var mask = 0; mask < (1 << n); mask++) {          // bit set = unit SURVIVES
