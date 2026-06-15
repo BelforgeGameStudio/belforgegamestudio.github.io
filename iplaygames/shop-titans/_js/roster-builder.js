@@ -27,6 +27,15 @@
   // persisted in JSON). Default = dark/light/earth (T16 MZE). COVERAGE_ELS is the full element set.
   var COVERAGE_ELS = ["dark", "light", "earth", "fire", "air", "water"];
   var DEFAULT_BARRIER_ELS = ["dark", "light", "earth"];
+  // Roster Objective presets (player-chosen in Filters; drive how Recommended optimizes). Each maps to
+  // the optimizer knobs: breadth on/off (spread barriers + diversify pass), the breadth floor, and the
+  // soft per-class cap. From meta min-max (concentrate) to a resilient well-rounded roster (spread).
+  var OBJECTIVES = {
+    maxwin:    { label: "Max win",   breadth: false, floor: 0, softCap: 8, desc: "Stack the strongest classes on the strongest barrier — closest to the meta." },
+    balanced:  { label: "Balanced",  breadth: true,  floor: 3, softCap: 6, desc: "Strong, with enough class + barrier coverage to not be fragile." },
+    resilient: { label: "Resilient", breadth: true,  floor: 3, softCap: 4, desc: "Max diversity + barrier coverage — survives zone / gear changes." }
+  };
+  var DEFAULT_OBJECTIVE = "balanced";
   var BARRIER_POWER_TARGET = 320;                       // border turns green when a barrier hits this
   var MAX_PARTIES = 12;                                 // party-slot cap
   var DEFAULT_MAX_ROSTER = 32;                          // default roster capacity
@@ -168,7 +177,9 @@
     filters: { exclude: {}, max: {}, min: {} },
     // Active barrier elements (player-configurable in Filters). Each party must break ONE of these
     // (≥ BARRIER_POWER_TARGET). Empty = no barrier requirement this zone.
-    barriers: DEFAULT_BARRIER_ELS.slice()
+    barriers: DEFAULT_BARRIER_ELS.slice(),
+    // How Recommended optimizes (maxwin | balanced | resilient). See OBJECTIVES.
+    objective: DEFAULT_OBJECTIVE
   };
   QUALITIES.forEach(function (q) { state.classStatsByQuality[q] = emptyClassTable(); });
   // Point the active table at the selected tier. classAvg/panel/paste all read & write state.classStats,
@@ -252,11 +263,14 @@
     }
 
     var counts = {}; // running roster class counts (for filter caps/min as the build commits)
+    // Roster Objective knobs (Max win / Balanced / Resilient) — see OBJECTIVES.
+    var OBJ = OBJECTIVES[state.objective] || OBJECTIVES[DEFAULT_OBJECTIVE];
+    var BREADTH_ON = OBJ.breadth; // spread across barriers + run the diversify pass
     // Soft per-class diversity cap: the breadth (`diversify`) and survivability (`flexRefine`) passes
     // won't pile a single class past this, so one standout (e.g. Acrobat once air is a barrier) can't
     // flood the roster. SOFT, not hard: `buildFor` can still exceed it when filling is forced, and a
-    // class's Min filter overrides it. Tune; `fMax` (Filters) is the hard cap players set themselves.
-    var SOFT_CLASS_CAP = 6;
+    // class's Min filter overrides it. Driven by the objective; `fMax` (Filters) is the player's hard cap.
+    var SOFT_CLASS_CAP = OBJ.softCap;
     function softCapBlocks(cn, slots) { // would adding one more `cn` (to a party with these slots) exceed the cap?
       var inParty = 0; for (var k = 0; k < slots.length; k++) if (slots[k] === cn) inParty++;
       return (counts[cn] || 0) + inParty >= Math.max(SOFT_CLASS_CAP, fMin(cn));
@@ -379,7 +393,7 @@
     // term ties and your Class Priority list decides the discretionary slots (no longer spreads
     // for spreading's sake). Raise the floor to spread more before priority kicks in; lower it
     // to honor priority sooner. Barrier-forced dark/light/earth presence is unaffected (hard req).
-    var BREADTH_FLOOR = 3; // match the Roster Health "3+ per element" target so no element is left red
+    var BREADTH_FLOOR = OBJ.floor; // per objective; Balanced/Resilient use 3 (matches Roster Health "3+/element")
     // A breadth swap must be truly (near-)free: it may not drop the party's est. win % by more than
     // this. Without it, `diversify` would happily trade a 95%-win nuker for an off-element low-DPS
     // class just because the coarse S/A/B/C tier "held" — exactly what made Recommended grades sag.
@@ -460,20 +474,22 @@
         tanksByAtk.forEach(function (tankCn) {                                                   // try each tank — bulk/threat can beat raw ATK
           var slots = buildFor(p, el, tankCn);
           var sc = scoreOf(p, el, slots);
-          // Balance the 3 barriers: among equal-grade, equal-alignment builds prefer the
-          // LESS-used barrier element so the roster doesn't all stack dark (highest-ATK).
+          // Selection priority: tier → champion alignment → (breadth: least-used barrier) → ATK → margin.
+          // With breadth OFF (Max win) the least-used step is skipped, so ties go to highest ATK — the
+          // optimizer concentrates on the strongest barrier instead of spreading dark/light/earth.
           var use = elemCount[el] || 0, bestUse = best ? (elemCount[best.el] || 0) : Infinity;
-          var better = !best ||
-            sc.tier < best.sc.tier ||                                                           // greener face wins
-            (sc.tier === best.sc.tier && sc.align > best.sc.align) ||                            // else align to champion element
-            (sc.tier === best.sc.tier && sc.align === best.sc.align && use < bestUse) ||         // else even out dark/light/earth
-            (sc.tier === best.sc.tier && sc.align === best.sc.align && use === bestUse && sc.atk > best.sc.atk) ||  // else faster kill
-            (sc.tier === best.sc.tier && sc.align === best.sc.align && use === bestUse && sc.atk === best.sc.atk && sc.bar > best.sc.bar);
+          var better;
+          if (!best) better = true;
+          else if (sc.tier !== best.sc.tier) better = sc.tier < best.sc.tier;          // greener face wins
+          else if (sc.align !== best.sc.align) better = sc.align > best.sc.align;       // align to champion element
+          else if (BREADTH_ON && use !== bestUse) better = use < bestUse;               // even out barriers (breadth only)
+          else if (sc.atk !== best.sc.atk) better = sc.atk > best.sc.atk;               // faster kill
+          else better = sc.bar > best.sc.bar;                                           // bigger barrier margin
           if (better) best = { slots: slots, sc: sc, el: el };
         });
       });
-      var chosen = best ? diversify(p, best.el, best.slots, best.sc.tier) : [];
-      if (chosen.length) chosen = flexRefine(p, best.el, chosen); // let the sim pull in bulky/flex picks (Spellknight)
+      var chosen = best ? (BREADTH_ON ? diversify(p, best.el, best.slots, best.sc.tier) : best.slots.slice()) : [];
+      if (chosen.length) chosen = flexRefine(p, best.el, chosen); // sim pulls in bulky/flex picks; soft cap per objective
       for (var i = 0; i < chosen.length; i++) {
         if (!mk(chosen[i], p.id)) break;
         var e = CLASS[chosen[i]] && CLASS[chosen[i]].element;
@@ -512,6 +528,7 @@
       classOrder: state.classOrder,
       filters: state.filters,
       barriers: state.barriers.slice(),
+      objective: state.objective,
       parties: state.parties.map(function (p) {
         return { id: p.id, name: p.name, champName: p.champName || "" };
       }),
@@ -594,6 +611,7 @@
     state.barriers = Array.isArray(data.barriers)
       ? data.barriers.filter(function (e) { return COVERAGE_ELS.indexOf(e) >= 0; })
       : DEFAULT_BARRIER_ELS.slice();
+    state.objective = OBJECTIVES[data.objective] ? data.objective : DEFAULT_OBJECTIVE;
     state.heroes = data.heroes.map(function (h) {
       return {
         id: Number(h.id),
@@ -2314,7 +2332,18 @@
     var barrierSection = POWER_HEADER + 'Prioritize elements (barriers)</div>' +
       '<p class="text-xs text-textSecondary leading-relaxed mb-1">Check the elemental barriers this zone uses. Each party must break <b>one</b> of them (≥ ' + BARRIER_POWER_TARGET + ' power). Default: dark / light / earth (T16 MZE). Unchecking all removes the barrier requirement.</p>' +
       '<div class="flex flex-wrap gap-2 mb-4">' + barrierChips + '</div>';
-    filtersBody.innerHTML = barrierSection + POWER_HEADER + 'Build filters</div>' +
+    // Roster Objective: how Recommended optimizes (meta concentration ↔ resilient spread).
+    var objBtns = Object.keys(OBJECTIVES).map(function (k) {
+      var o = OBJECTIVES[k], on = state.objective === k;
+      return '<button type="button" data-objective="' + k + '" title="' + escA(o.desc) + '" class="flex-1 px-2 py-1.5 rounded-lg border-2 text-sm font-semibold ' +
+        (on ? "border-accent text-textPrimary bg-hoverBg" : "border-borderc text-textSecondary") + '">' + escH(o.label) + '</button>';
+    }).join("");
+    var objDesc = (OBJECTIVES[state.objective] || OBJECTIVES[DEFAULT_OBJECTIVE]).desc;
+    var objSection = POWER_HEADER + 'Roster objective</div>' +
+      '<p class="text-xs text-textSecondary leading-relaxed mb-1">How <b>Recommended</b> optimizes — from meta min-max to a resilient, well-rounded roster. Applies on the next Recommended build.</p>' +
+      '<div class="flex gap-2 mb-1">' + objBtns + '</div>' +
+      '<p class="text-xs text-textSecondary mb-4">' + escH(objDesc) + '</p>';
+    filtersBody.innerHTML = objSection + barrierSection + POWER_HEADER + 'Build filters</div>' +
       '<p class="text-xs text-textSecondary leading-relaxed mb-1"><b>Exclude</b> = never use. <b>Min</b> = require this many in the roster. <b>Max</b> = cap. Whole-roster; Min applies when generating (Top-up / Recommended), Auto Sort honors Exclude + Max.</p>' +
       header + rows;
   }
@@ -2341,6 +2370,11 @@
       var el = e.target.closest('[data-filter="min"], [data-filter="max"]'); if (!el) return;
       var cn = el.dataset.cls, kind = el.dataset.filter, v = String(el.value).replace(/[^0-9]/g, "");
       if (v === "") delete state.filters[kind][cn]; else state.filters[kind][cn] = Math.max(0, parseInt(v, 10) || 0);
+    });
+    filtersBody.addEventListener("click", function (e) {
+      // Roster Objective: change how Recommended optimizes (applies on the next Recommended build).
+      var ob = e.target.closest("[data-objective]"); if (!ob) return;
+      if (OBJECTIVES[ob.dataset.objective]) { state.objective = ob.dataset.objective; buildFiltersPanel(); }
     });
   }
   var openFiltersBtn = document.getElementById("openFiltersBtn");
@@ -2451,15 +2485,69 @@
     return { assign: assign, bench: pool };
   }
 
+  // Fast (closed-form) win estimate for a party arrangement, mirroring partyOutcome's gates. Used by
+  // Auto Sort's 3000-iteration search — the Monte Carlo sim would be far too slow at that volume; the
+  // DISPLAYED grade still uses the sim (partyOutcome). Returns 0 for any party that can't clear.
+  function closedWinEstimate(p, hs) {
+    if (hs.length !== partyCap(p)) return 0;
+    var champ = getChampion(p.champName);
+    var buff = partyBuff(champ, hs.map(function (h) { return h.className; }));
+    if (state.barriers.length && partyBestBarrier(p, hs) * buff.barrierMult < BARRIER_POWER_TARGET) return 0;
+    var atk = hs.reduce(function (a, h) { return a + buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), critMultOf(h.className), buff); }, 0) +
+      (champ ? buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) : 0);
+    var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : Infinity;
+    if (rounds >= MZE.roundCap) return 0;
+    var saves = hs.reduce(function (a, h) { return a + classSaves(h.className); }, 0);
+    return winChance(partyUnits(hs, champ, buff), rounds, saves);
+  }
+  // Auto Sort search objective: most full parties that clear the (active) barrier, then barrier margin.
+  // (Win is optimized separately by winSwapPass on the chosen arrangement — putting it in this 3000×
+  // search was a near no-op, since the search fills passing parties with the same heroes either way.)
   function autoScore(res) {
     var passers = 0, fullTeams = 0, margin = 0;
     for (var i = 0; i < state.parties.length; i++) {
       var p = state.parties[i], hs = res.assign[p.id], cap = partyCap(p);
       if (hs.length === cap) fullTeams++;
       var b = partyBestBarrier(p, hs);
-      if (hs.length === cap && b >= BARRIER_POWER_TARGET) { passers++; margin += (b - BARRIER_POWER_TARGET); }
+      var barrierOK = !state.barriers.length || b >= BARRIER_POWER_TARGET; // empty barriers = no requirement
+      if (hs.length === cap && barrierOK) { passers++; if (state.barriers.length) margin += (b - BARRIER_POWER_TARGET); }
     }
     return passers * 1e9 + fullTeams * 1e5 + Math.min(margin, 90000);
+  }
+  // Win-improving swap pass: on the CHOSEN arrangement, swap non-tank heroes between parties (or with
+  // the bench) whenever it raises total closed-form win, without dropping a party's barrier. Greedy
+  // hill-climb — runs once on the final arrangement (cheap), so Auto Sort lands the strongest CLEARING
+  // teams, not just barrier-passers. Tanks aren't swapped (keeps the 1-tank-per-party rule intact).
+  function winSwapPass(assign, bench) {
+    var pid2p = {}; state.parties.forEach(function (p) { pid2p[p.id] = p; });
+    var pids = state.parties.filter(function (p) { return assign[p.id].length === partyCap(p); }).map(function (p) { return p.id; });
+    function barrierOK(p, hs) { return !state.barriers.length || partyBestBarrier(p, hs) >= BARRIER_POWER_TARGET; }
+    function notTank(h) { return heroRole(h) !== "tank"; }
+    var improved = true, guard = 0;
+    while (improved && guard++ < 12) {
+      improved = false;
+      for (var a = 0; a < pids.length; a++) for (var b = a + 1; b < pids.length; b++) {
+        var pa = pid2p[pids[a]], pb = pid2p[pids[b]], A = assign[pa.id], B = assign[pb.id];
+        for (var ia = 0; ia < A.length; ia++) { if (!notTank(A[ia])) continue;
+          for (var ib = 0; ib < B.length; ib++) { if (!notTank(B[ib])) continue;
+            var before = closedWinEstimate(pa, A) + closedWinEstimate(pb, B);
+            var ha = A[ia], hb = B[ib]; A[ia] = hb; B[ib] = ha;                    // try swap
+            if (barrierOK(pa, A) && barrierOK(pb, B) && closedWinEstimate(pa, A) + closedWinEstimate(pb, B) > before + 1e-9) { improved = true; }
+            else { A[ia] = ha; B[ib] = hb; }                                       // revert
+          }
+        }
+      }
+      for (var pi = 0; pi < pids.length; pi++) { var p = pid2p[pids[pi]], hs = assign[p.id];
+        for (var si = 0; si < hs.length; si++) { if (!notTank(hs[si])) continue;
+          for (var bj = 0; bj < bench.length; bj++) { if (!notTank(bench[bj])) continue;
+            var before2 = closedWinEstimate(p, hs);
+            var hp = hs[si], hbn = bench[bj]; hs[si] = hbn; bench[bj] = hp;        // try party<->bench swap
+            if (barrierOK(p, hs) && closedWinEstimate(p, hs) > before2 + 1e-9) { improved = true; }
+            else { hs[si] = hp; bench[bj] = hbn; }                                 // revert
+          }
+        }
+      }
+    }
   }
 
   function autoSort() {
@@ -2471,6 +2559,7 @@
       var sc = autoScore(res);
       if (sc > bestScore) { bestScore = sc; best = res; }
     }
+    winSwapPass(best.assign, best.bench); // local win optimization on the chosen arrangement
     state.heroes.forEach(function (h) { h.partyId = null; });
     state.parties.forEach(function (p) { best.assign[p.id].forEach(function (h) { h.partyId = p.id; }); });
     var passers = 0;
