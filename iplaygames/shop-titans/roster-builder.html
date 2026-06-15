@@ -58,7 +58,7 @@
     <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
       <div class="min-w-0">
         <h2 class="text-base font-semibold text-textPrimary">Roster Health</h2>
-        <p class="text-xs text-textSecondary mt-0.5">Aim for 3+ heroes per element. Dark / light / earth are the current T16 barrier priority.</p>
+        <p id="healthBarrierNote" class="text-xs text-textSecondary mt-0.5">Aim for 3+ heroes per element. Dark / light / earth are the current T16 barrier priority.</p>
       </div>
       <button id="healthClose" class="btn-white shrink-0" aria-label="Close">Close</button>
     </header>
@@ -219,17 +219,19 @@
     </div>
   </div>
 
-  <!-- "Why I chose this" centered overlay (Recommended reasoning; fade in, closed on load) -->
-  <div id="reasonBackdrop"
-    class="fixed inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
-  <div id="reasonModal"
-    class="fixed inset-0 z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
-    <div class="bg-surface border-2 border-borderc rounded-2xl w-[480px] max-w-full p-5 shadow-xl">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-base font-semibold text-textPrimary">Why I chose this</h2>
-        <button id="reasonClose" class="btn-white shrink-0" aria-label="Close">Close</button>
+  <!-- Combat replay modal (one sample fight, round-by-round; opened from a party's ⚔️ button) -->
+  <div id="combatModal"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-surface border-2 border-borderc rounded-2xl w-[600px] max-w-full p-5 shadow-xl flex flex-col max-h-[85vh]">
+      <div class="flex items-center justify-between mb-2 gap-2">
+        <h2 id="combatTitle" class="text-base font-semibold text-textPrimary truncate">Combat replay</h2>
+        <div class="flex gap-2 shrink-0">
+          <button id="combatReroll" class="btn-white">Re-roll</button>
+          <button id="combatClose" class="btn-white" aria-label="Close">Close</button>
+        </div>
       </div>
-      <div id="reasonBody" class="text-sm text-textPrimary leading-relaxed whitespace-pre-line max-h-[60vh] overflow-y-auto"></div>
+      <div id="combatSummary" class="text-sm mb-2 shrink-0"></div>
+      <div id="combatBody" class="text-xs leading-relaxed overflow-y-auto flex-1"></div>
     </div>
   </div>
 

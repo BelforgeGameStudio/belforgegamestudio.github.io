@@ -23,8 +23,10 @@
   };
 
   /* ---------------- data ---------------- */
-  var BARRIERS = ["dark", "light", "earth"];            // Meteor Zone Extreme
+  // Active barrier elements now live in state.barriers (player-configurable in the Filters panel,
+  // persisted in JSON). Default = dark/light/earth (T16 MZE). COVERAGE_ELS is the full element set.
   var COVERAGE_ELS = ["dark", "light", "earth", "fire", "air", "water"];
+  var DEFAULT_BARRIER_ELS = ["dark", "light", "earth"];
   var BARRIER_POWER_TARGET = 320;                       // border turns green when a barrier hits this
   var MAX_PARTIES = 12;                                 // party-slot cap
   var DEFAULT_MAX_ROSTER = 32;                          // default roster capacity
@@ -163,7 +165,10 @@
     parties: SEED_PARTIES,
     // Build constraints applied by Auto Sort / Top-up / Recommended.
     //   exclude{cn:true} never use the class · max{cn:N} cap roster count · min{cn:N} require roster count
-    filters: { exclude: {}, max: {}, min: {} }
+    filters: { exclude: {}, max: {}, min: {} },
+    // Active barrier elements (player-configurable in Filters). Each party must break ONE of these
+    // (≥ BARRIER_POWER_TARGET). Empty = no barrier requirement this zone.
+    barriers: DEFAULT_BARRIER_ELS.slice()
   };
   QUALITIES.forEach(function (q) { state.classStatsByQuality[q] = emptyClassTable(); });
   // Point the active table at the selected tier. classAvg/panel/paste all read & write state.classStats,
@@ -235,7 +240,6 @@
     var heroes = [], id = 1;
     var allClasses = CATALOG.map(function (c) { return c.name; });
     var topAny = state.classOrder[0] || CATALOG[0].name;
-    recommendReasons = {}; // rebuilt per party below
 
     // Soft feasibility check: if the sum of all required class minimums can't fit in the roster
     // cap, the minimums are mathematically unsatisfiable. Warn (don't block) — the greedy fill is
@@ -250,7 +254,7 @@
     var counts = {}; // running roster class counts (for filter caps/min as the build commits)
     // Classes matching `filter` and not excluded, sorted by EFFECTIVE (crit-folded) ATK desc, priority
     // asc. Using effClassAtk (not raw ATK) so candidate generation values crit chance / crit-damage the
-    // same way the sim, diversify, and explainBuild do — a high-crit class no longer ranks below a
+    // same way the sim and diversify do — a high-crit class no longer ranks below a
     // higher-raw-ATK one that actually does less damage. (Evade is survivability, not ATK, so it's
     // handled by flexRefine's shortlist + the sim, not here.)
     function byAtk(filter) {
@@ -302,7 +306,7 @@
       var cap = partyCap(p), champ = getChampion(p.champName);
       var buff = partyBuff(champ, slots);
       var bestBar = 0;
-      BARRIERS.forEach(function (b) {
+      state.barriers.forEach(function (b) {
         var s = champCovers(p, b);
         slots.forEach(function (cn) { s += contrib(cn, b); });
         if (s > bestBar) bestBar = s;
@@ -312,7 +316,8 @@
         (champ ? buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) : 0);
       var tier, win = 0;
       var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : Infinity;
-      if (slots.length !== cap || bestBar < BARRIER_POWER_TARGET || rounds >= MZE.roundCap) {
+      var barrierFail = state.barriers.length > 0 && bestBar < BARRIER_POWER_TARGET; // no active barriers = no requirement
+      if (slots.length !== cap || barrierFail || rounds >= MZE.roundCap) {
         tier = 4; // hard fail (D): undermanned, barrier unbroken, or can't kill before the 500-round cap
       } else {
         var saves = slots.reduce(function (a, cn) { return a + classSaves(cn); }, 0);
@@ -433,10 +438,12 @@
       return out;
     }
 
+    // No active barriers → still try once (el=null) so parties get built (pure DPS/survival, no barrier req).
+    var barrierChoices = state.barriers.length ? state.barriers : [null];
     state.parties.forEach(function (p) {
       if (heroes.length >= state.maxRoster) return;
       var best = null;
-      BARRIERS.forEach(function (el) {
+      barrierChoices.forEach(function (el) {
         tanksByAtk.forEach(function (tankCn) {                                                   // try each tank — bulk/threat can beat raw ATK
           var slots = buildFor(p, el, tankCn);
           var sc = scoreOf(p, el, slots);
@@ -460,89 +467,11 @@
         if (e) elemCount[e] = (elemCount[e] || 0) + 1;
         counts[chosen[i]] = (counts[chosen[i]] || 0) + 1; // track for filter caps/min
       }
-      if (best && chosen.length) recommendReasons[p.id] = explainBuild(p, best.el, best.sc.align, chosen, scoreOf(p, best.el, chosen));
     });
     state.heroes = heroes;
   }
   // Class-average effective ATK (crit-boosted) — the figure the build optimizes on.
   function effClassAtk(cn) { return effAtkOf(classAvg(cn, "atk"), classAvg(cn, "crit"), critMultOf(cn)); }
-  function fmtN(n) { return Math.round(Number(n) || 0).toLocaleString(); }
-  // Per-pick rationale for a Recommended party build (shown in the "Why I chose this" modal):
-  // why this barrier, then each hero's role + effective-ATK rank vs same-element alternatives,
-  // the crit/crit-damage that drives its damage, and any class skill.
-  function explainBuild(p, el, aligned, slots, sc) {
-    var champ = getChampion(p.champName);
-    var buff = partyBuff(champ, slots);                                   // THIS party's champion aura
-    var grade = GRADE_LETTERS[sc.tier];
-    var rounds = sc.atk > 0 ? Math.ceil(MZE.bossHP / sc.atk) : 0;
-    // In-party effective ATK/EVA = class average boosted by THIS champion's aura (matches what the
-    // optimizer scored), so the same class reads differently in another champion's party.
-    function buffEff(cn) { return buffedEffAtk(classAvg(cn, "atk"), classAvg(cn, "crit"), critMultOf(cn), buff); }
-    function buffEva(cn) { return Math.round(classAvg(cn, "eva") + buff.evaAdd); }
-    // Cross-class ranks are aura-invariant (the champ boosts everyone equally) → rank on class avgs.
-    var dpsByAtk = CATALOG.filter(function (c) { return !isTank(c.name) && !fExclude(c.name); }).map(function (c) { return c.name; }).sort(function (a, b) { return effClassAtk(b) - effClassAtk(a); });
-    var topDps = 0; slots.forEach(function (cn, i) { if (i > 0) { var e = buffEff(cn); if (e > topDps) topDps = e; } });
-
-    var why = aligned ? ("aligns with " + (champ ? champ.name : "the champion") + "’s " + el + " element") : "balances dark / light / earth across your roster so a zone change needs fewer rebuilds";
-    var out = ["Barrier — this party breaks " + el + " (" + why + "). It stacks " + Math.round(sc.bar) + " " + el + " power against the 320 needed, so the barrier drops and the team's hits land in full."];
-    if (champ) {
-      var bp = [];
-      if (buff.atkMult > 1) bp.push("+" + Math.round((buff.atkMult - 1) * 100) + "% ATK");
-      if (buff.hpMult > 1) bp.push("+" + Math.round((buff.hpMult - 1) * 100) + "% HP");
-      if (buff.defMult > 1) bp.push("+" + Math.round((buff.defMult - 1) * 100) + "% DEF");
-      if (buff.critAdd) bp.push("+" + buff.critAdd + " crit");
-      if (buff.evaAdd) bp.push("+" + buff.evaAdd + " EVA");
-      if (buff.critDmgAdd) bp.push("+" + buff.critDmgAdd + " crit-dmg");
-      if (buff.barrierMult > 1) bp.push("+" + Math.round((buff.barrierMult - 1) * 100) + "% barrier");
-      out.push("Champion — " + champ.name + " (" + champ.el + "): " + (bp.length ? bp.join(", ") + " to the whole party" : "no combat aura") + " — every eff-ATK below already includes it.");
-    }
-    out.push("");
-
-    slots.forEach(function (cn, i) {
-      var elc = CLASS[cn].element, eff = buffEff(cn), cd = critMultOf(cn) + (buff.critDmgAdd || 0), cr = Math.round(classAvg(cn, "crit") + (buff.critAdd || 0));
-      var thr = Math.round(classAvg(cn, "threat")), ev = buffEva(cn);
-      var critNote = (cd > 2 || cr >= 35) ? " Its " + cr + "% crit at ×" + cd + " crit-damage punches well above the listed ATK." : "";
-      var sk = CLASS_SKILLS[cn];
-      var skill = sk ? "\n◦ Skill: " + sk.text + (sk.protectAlly || sk.surviveFatal ? " — a free lethal-hit save, a real survivability bump." : "") : "";
-
-      if (i === 0) {
-        var tankRank = CATALOG.filter(function (c) { return isTank(c.name) && !fExclude(c.name); }).sort(function (a, b) { return effClassAtk(b.name) - effClassAtk(a.name); }).map(function (c) { return c.name; });
-        var lead;
-        if (elc === el) lead = "the " + el + " tank, so it pulls double duty — it soaks the boss up front AND its " + Math.round(classAvg(cn, "power") * buff.barrierMult) + " " + el + " power helps break the barrier, freeing a slot for damage. Threat " + thr + " pulls the boss's hits onto it and off your carries";
-        else lead = "here for bulk + threat (" + thr + ") to body-block — it eats the boss's hits so your squishies live" + (tankRank[0] && tankRank[0] !== cn ? ", and soaking wins the slot over the higher-ATK " + tankRank[0] : "");
-        if (tankRank[0] === cn) lead += " — also your hardest-hitting tank";
-        out.push("• Tank — " + cn + ": " + lead + ". HP " + fmtN(classAvg(cn, "hp") * buff.hpMult) + " · DEF " + fmtN(classAvg(cn, "def") * buff.defMult) + " · threat " + thr + "." + skill);
-      } else {
-        // Hardest same-element DPS IGNORING filters, so we can name the filter reason if it was skipped.
-        var sameElAll = CATALOG.filter(function (c) { return c.element === elc && !isTank(c.name); }).map(function (c) { return c.name; }).sort(function (a, b) { return effClassAtk(b) - effClassAtk(a); });
-        var hardest = sameElAll[0];
-        var gRank = dpsByAtk.indexOf(cn) + 1;
-        var covers = (elc === el || elc === "all");
-        var pwr = Math.round(classAvg(cn, "power") * (elc === "all" ? MZE.allBarrierFactor : 1) * buff.barrierMult);
-        var soaker = topDps > 0 && eff < 0.4 * topDps && ev >= 75; // low damage but high evasion → a survivability pick
-        var line;
-        if (soaker) {
-          line = cn + " (" + elc + ") — not here for damage (only " + fmtN(eff) + " eff ATK); it earns its slot on survival — " + ev + " EVA dodges most of the boss's hits" + (thr >= 50 ? ", and threat " + thr + " pulls fire off your carries" : "") + ", so it rides out the fight (what the win-model rewards)." + (covers ? " It also chips the " + el + " barrier (" + pwr + " pwr)." : "");
-        } else {
-          var whyNot = "";
-          if (hardest && hardest !== cn) {
-            var why2 = fExclude(hardest) ? "but you've excluded it" : (isFinite(fMax(hardest)) ? "but it's capped at max-" + fMax(hardest) : "but it's placed in another party / out-prioritized");
-            whyNot = " — " + hardest + " hits harder (~" + fmtN(buffEff(hardest)) + " here) " + why2;
-          } else if (gRank >= 1 && gRank <= 5) {
-            whyNot = " — your top available " + elc + " DPS, one of your hardest hitters (#" + gRank + " overall)";
-          }
-          var role = covers ? "breaks the " + el + " barrier (" + pwr + " pwr) and brings the damage" : "damage + " + elc + " depth, keeping the roster ready when the barrier rotates";
-          line = cn + " (" + elc + ") — " + role + ": " + fmtN(eff) + " eff ATK" + whyNot + "." + critNote;
-        }
-        out.push("• " + line + skill);
-      }
-    });
-
-    out.push("");
-    if (rounds >= MZE.roundCap) out.push("Result — FAILS: ~" + rounds + " rounds to kill the 10M-HP boss exceeds the 500-round limit (auto-loss). Needs far more ATK.");
-    else out.push("Result — grade " + grade + ", ~" + Math.round((sc.win || 0) * 100) + "% est. win chance (clears the quest — survivors finish the boss); kills the 10M boss in ~" + rounds + " rounds at ~" + fmtN(sc.atk) + " party ATK.");
-    return out.join("\n");
-  }
   function addParty() {
     if (state.parties.length >= MAX_PARTIES) return;
     var max = 0; state.parties.forEach(function (p) { if (p.id > max) max = p.id; });
@@ -569,6 +498,7 @@
       classStatsByQuality: state.classStatsByQuality,
       classOrder: state.classOrder,
       filters: state.filters,
+      barriers: state.barriers.slice(),
       parties: state.parties.map(function (p) {
         return { id: p.id, name: p.name, champName: p.champName || "" };
       }),
@@ -647,6 +577,10 @@
       });
     }
     state.filters = f;
+    // Active barriers: keep only valid elements; default to dark/light/earth for older saves (no `barriers`).
+    state.barriers = Array.isArray(data.barriers)
+      ? data.barriers.filter(function (e) { return COVERAGE_ELS.indexOf(e) >= 0; })
+      : DEFAULT_BARRIER_ELS.slice();
     state.heroes = data.heroes.map(function (h) {
       return {
         id: Number(h.id),
@@ -701,7 +635,7 @@
       var directPower = members.reduce(function (s, m) { return s + (elOf(m.className) === el ? heroStat(m, "power") : 0); }, 0)
         + (champEl === el ? champPower : 0);
       var directPresent = sources.indexOf(el) >= 0;
-      var isBarrier = BARRIERS.indexOf(el) >= 0;
+      var isBarrier = state.barriers.indexOf(el) >= 0;
       return {
         el: el, power: (directPower + allPower) * (isBarrier ? bMult : 1),
         ok: directPresent || allPresent, viaAll: (!directPresent && allPresent),
@@ -866,7 +800,7 @@
     return '<div data-party-id="' + p.id + '" class="bg-surface border-2 border-borderc rounded-xl p-3 transition" style="border-color:' + r.color + '">' +
       '<div class="flex items-center gap-2 mb-1">' + gradeImg(p) + gradePct(p) +
         '<input class="flex-1 min-w-0 bg-transparent border-none outline-none font-bold text-base text-textPrimary" value="' + escA(p.name) + '" data-action="text" data-target="party" data-id="' + p.id + '" data-field="name" data-k="party-' + p.id + '-name">' +
-        (recommendReasons[p.id] ? '<button class="bg-transparent border-none cursor-pointer p-0 leading-none shrink-0 opacity-80 hover:opacity-100 transition" data-reason-pid="' + p.id + '" title="Why I chose this"><img src="' + IMG_DIR + 'Wooden_Chest.webp" alt="Why I chose this" class="w-5 h-5 object-contain" onerror="this.outerHTML=\'ⓘ\'"></button>' : '') +
+        '<button class="bg-transparent border-none cursor-pointer p-0 leading-none shrink-0 text-base opacity-70 hover:opacity-100 transition" data-sim-pid="' + p.id + '" title="Simulate combat — watch a sample fight">⚔️</button>' +
         '<button class="bg-transparent border-none cursor-pointer p-0 leading-none shrink-0 opacity-70 hover:opacity-100 transition" data-action="del-party" data-id="' + p.id + '" title="Delete party"><img src="' + IMG_DIR + 'cancel.png" alt="Delete party" class="w-5 h-5 object-contain" onerror="this.outerHTML=\'×\'"></button>' +
       '</div>' +
       '<div class="flex flex-wrap gap-1.5 mb-2">' + badges + '</div>' +
@@ -902,9 +836,6 @@
   // Persistent "what changed" message shown in the update bar above the party section.
   var lastUpdate = "";
   function setUpdate(msg) { lastUpdate = msg; }
-  // Per-party "why I chose this" text, set by Recommended (buildSuggestedRoster). The ⓘ on a
-  // party card shows only while a reason exists; cleared/invalidated when that party changes.
-  var recommendReasons = {};
   function heroLabel(id) { var h = null; state.heroes.forEach(function (x) { if (x.id === id) h = x; }); return h ? (h.name || h.className) : "hero"; }
   function heroPartyId(id) { var pid = null; state.heroes.forEach(function (x) { if (x.id === id) pid = x.partyId; }); return pid; }
   function partyLabel(id) { var p = null; state.parties.forEach(function (q) { if (q.id === id) p = q; }); return p && p.name ? p.name : "party"; }
@@ -992,30 +923,28 @@
       var pid = Number(champ.dataset.id);
       setParty(pid, "champName", champ.value);
       enforcePartyCap(pid); // dropping to a 3-slot party bumps any 4th hero back to roster
-      delete recommendReasons[pid]; // party composition/cap changed
       setUpdate(champ.value ? "Set " + partyLabel(pid) + "'s champion to " + champ.value + "." : "Removed " + partyLabel(pid) + "'s champion.");
       render();
     }
   });
   app.addEventListener("click", function (e) {
-    var reason = e.target.closest("[data-reason-pid]");
-    if (reason) { openReasonModal(recommendReasons[reason.dataset.reasonPid] || "No reasoning recorded for this party."); return; }
+    var sim = e.target.closest("[data-sim-pid]");
+    if (sim) { openCombatModal(Number(sim.dataset.simPid)); return; }
     var el = e.target.closest('[data-action]'); if (!el) return;
     var a = el.dataset.action;
     if (a === "add-hero") {
       if (state.heroes.length >= state.maxRoster) { showAlert("Roster is full (" + state.maxRoster + "). Increase capacity or retire a hero."); return; }
       addHero(el.dataset.class); setUpdate("Added " + el.dataset.class + " to the roster (" + state.heroes.length + "/" + state.maxRoster + ")."); render();
     }
-    else if (a === "del-hero") { var di = Number(el.dataset.id), dl = heroLabel(di), dpid = heroPartyId(di); delHero(di); if (dpid) delete recommendReasons[dpid]; setUpdate("Removed " + dl + " from the roster."); render(); }
-    else if (a === "unassign") { var ui = Number(el.dataset.id), ul = heroLabel(ui), upid = heroPartyId(ui); setHero(ui, "partyId", null); if (upid) delete recommendReasons[upid]; setUpdate("Benched " + ul + "."); render(); }
+    else if (a === "del-hero") { var di = Number(el.dataset.id), dl = heroLabel(di); delHero(di); setUpdate("Removed " + dl + " from the roster."); render(); }
+    else if (a === "unassign") { var ui = Number(el.dataset.id), ul = heroLabel(ui); setHero(ui, "partyId", null); setUpdate("Benched " + ul + "."); render(); }
     else if (a === "add-party") { addParty(); setUpdate("Added a party (" + state.parties.length + " total)."); render(); }
-    else if (a === "del-party") { var dpi = Number(el.dataset.id), dp = partyLabel(dpi); delParty(dpi); delete recommendReasons[dpi]; setUpdate("Deleted " + dp + " — its heroes returned to the roster."); render(); }
+    else if (a === "del-party") { var dpi = Number(el.dataset.id), dp = partyLabel(dpi); delParty(dpi); setUpdate("Deleted " + dp + " — its heroes returned to the roster."); render(); }
     else if (a === "auto-sort") {
       var tankCount = state.heroes.filter(function (h) { return heroRole(h) === "tank"; }).length;
       if (tankCount < state.parties.length) { showAlert("Auto Sort can't give every party a tank: " + state.parties.length + " parties but only " + tankCount + " tanks."); return; }
       var passers = autoSort();
       if (passers === null) { showAlert("Auto Sort couldn't run — your Filters (excluded/capped tanks) leave fewer than " + state.parties.length + " usable tanks."); return; }
-      recommendReasons = {}; // different algorithm — Recommended reasoning no longer applies
       setUpdate("Auto Sort — " + passers + "/" + state.parties.length + " parties clear a barrier.");
       render();
     }
@@ -1030,7 +959,7 @@
         bodyHTML: "Delete <b>ALL heroes</b> from the roster? This can't be undone.",
         confirmLabel: "Clear All",
         confirmClass: "btn-red",
-        onConfirm: function () { state.heroes = []; recommendReasons = {}; setUpdate("Cleared all heroes from the roster."); render(); }
+        onConfirm: function () { state.heroes = []; setUpdate("Cleared all heroes from the roster."); render(); }
       });
     }
     else if (a === "suggested-roster") {
@@ -1076,9 +1005,7 @@
     state.parties.forEach(function (q) { if (q.id === pid) party = q; });
     var count = state.heroes.filter(function (h) { return h.partyId === pid; }).length;
     if (party && count >= partyCap(party)) return; // party already full (3 with champion, 4 without)
-    var oldPid = heroPartyId(id);
     setHero(id, "partyId", pid);
-    delete recommendReasons[pid]; if (oldPid) delete recommendReasons[oldPid]; // both parties changed
     setUpdate("Moved " + heroLabel(id) + " to " + (party && party.name ? party.name : "a party") + ".");
     render();
   });
@@ -1137,7 +1064,7 @@
         var full = hs.length === partyCap(p);
         if (full && partyBestBarrier(p, hs) >= BARRIER_POWER_TARGET) return;
         var bestEl = null, bestDef = Infinity;
-        BARRIERS.forEach(function (el) { var def = BARRIER_POWER_TARGET - barrierSum(p, hs, el); if (def < bestDef) { bestDef = def; bestEl = el; } });
+        state.barriers.forEach(function (el) { var def = BARRIER_POWER_TARGET - barrierSum(p, hs, el); if (def < bestDef) { bestDef = def; bestEl = el; } });
         deficits.push({ party: p.name, el: bestEl, deficit: Math.max(0, Math.round(bestDef)), full: full });
       });
     }
@@ -1166,7 +1093,7 @@
     COVERAGE_ELS.forEach(function (el) {
       if (d.h[el] >= 3) return;
       var tc2 = topClassForElement(el);
-      out.push(suggCard(BARRIERS.indexOf(el) >= 0 ? COL.rose : COL.amber,
+      out.push(suggCard(state.barriers.indexOf(el) >= 0 ? COL.rose : COL.amber,
         'Thin on <b class="capitalize">' + el + '</b> (' + d.h[el] + '/3 heroes).' + (tc2 ? ' Recruit a <b>' + escH(tc2) + '</b>.' : '')));
     });
 
@@ -1189,13 +1116,22 @@
   // Roster Health: element depth across all 6 elements + Fighter/tank count.
   function buildRosterHealth() {
     if (!healthBody) return;
+    // Keep the header note in sync with the player's chosen barriers.
+    var note = document.getElementById("healthBarrierNote");
+    if (note) {
+      var bnames = state.barriers.slice().sort(function (a, b) { return COVERAGE_ELS.indexOf(a) - COVERAGE_ELS.indexOf(b); })
+        .map(function (e) { return e.charAt(0).toUpperCase() + e.slice(1); });
+      note.textContent = "Aim for 3+ heroes per element. " + (bnames.length
+        ? bnames.join(" / ") + " " + (bnames.length === 1 ? "is the" : "are the") + " current barrier priority."
+        : "No barriers selected for this zone.");
+    }
     var d = depth();
     var elRows = COVERAGE_ELS.map(function (el) {
       var n = d.h[el];
-      var isBarrier = BARRIERS.indexOf(el) >= 0;
+      var isBarrier = state.barriers.indexOf(el) >= 0;
       var low = n < 3;
       return '<div class="flex items-center gap-2 bg-surface border-2 border-borderc rounded-lg px-3 py-2">' + barrierIcon(el) +
-        '<span class="flex-1 capitalize text-sm">' + el + (isBarrier ? ' <span class="text-textSecondary text-xs">· T16 barrier</span>' : '') + '</span>' +
+        '<span class="flex-1 capitalize text-sm">' + el + (isBarrier ? ' <span class="text-textSecondary text-xs">· barrier</span>' : '') + '</span>' +
         '<span class="font-mono text-sm font-bold" style="color:' + (low ? COL.rose : COL.emerald) + '">' + n + '</span>' +
         '<span class="text-xs text-textSecondary font-mono">/3</span></div>';
     }).join("");
@@ -1571,22 +1507,25 @@
     return Math.max(0, Math.min(cap, effEva / 100));
   }
   // Apply one boss attack to a unit (single-target can crit; AoE is a flat DEF-reduced hit). Mutates hp.
+  // Returns { dodged, dmg, crit } so the combat-replay log can describe what happened.
   function applyBossHit(x, r, rng, isAoe) {
-    if (rng() < dodgeProbOf(x, r)) { x.dodgedThisRound = true; return; }
-    var dmg;
+    if (rng() < dodgeProbOf(x, r)) { x.dodgedThisRound = true; return { dodged: true, dmg: 0, crit: false }; }
+    var dmg, crit = false;
     if (isAoe) {
       dmg = MZE.aoeHit * mzeDefMult(x.def);
     } else {
       var effEva = condEva(x) - MZE.evaPenalty;
       var bossCrit = MZE.critChance + Math.max(0, -effEva) * MZE.critPerNegEva; // crit ignores DEF
-      dmg = (rng() < bossCrit) ? MZE.critHit : MZE.baseHit * mzeDefMult(x.def);
+      crit = rng() < bossCrit;
+      dmg = crit ? MZE.critHit : MZE.baseHit * mzeDefMult(x.def);
     }
     x.hp -= dmg;
     x.damagedThisRound = true;
+    return { dodged: false, dmg: dmg, crit: crit };
   }
   // Resolve ONE fight → true (boss dead before the round cap) / false (wiped or hit the cap).
   // `rng` is a mulberry32 stream (advanced across trials); `opts` = { saves, champName }.
-  function simulateFight(units, rng, opts) {
+  function simulateFight(units, rng, opts, log) {
     opts = opts || {};
     var n = units.length;
     if (!n) return false;
@@ -1600,6 +1539,15 @@
         // Bishop survive-fatal is SELF-only (the individual Bishop). Lord's is the party-wide pool below.
         selfSave: !_simBare && !!(CLASS_SKILLS[s.cn] && CLASS_SKILLS[s.cn].surviveFatal), usedSelfSave: false };
     }
+    // Combat-replay logging (only when `log` is passed — the grade/optimizer path skips all of this).
+    var LOG = !!log;
+    function LG(rd, k, t) { if (LOG) log.push({ r: rd, k: k, t: t }); }
+    function num(v) { return Math.round(v).toLocaleString(); }
+    if (LOG) { // unique display labels (dedupe same-class heroes)
+      var seenL = {}; u.forEach(function (z) { var b = z.isChamp ? z.champName + " (champ)" : z.cn; seenL[b] = (seenL[b] || 0) + 1; });
+      var cntL = {}; u.forEach(function (z) { var b = z.isChamp ? z.champName + " (champ)" : z.cn; if (seenL[b] > 1) { cntL[b] = (cntL[b] || 0) + 1; z.label = b + " #" + cntL[b]; } else z.label = b; });
+    }
+    function lab(z) { return z.label || (z.isChamp ? z.champName : z.cn); }
     // Party-wide saves = Lord's "protect an ally" (one per Lord). Bishop's save is per-unit (selfSave), NOT here.
     var allySaves = 0;
     if (!_simBare) for (var i = 0; i < n; i++) { if (CLASS_SKILLS[u[i].cn] && CLASS_SKILLS[u[i].cn].protectAlly) allySaves++; }
@@ -1608,31 +1556,41 @@
     var bossHp = MZE.bossHP, cap = MZE.roundCap;
     for (var r = 1; r <= cap; r++) {
       // ---- party damage (alive units, with this round's conditional state) ----
-      var dmg = 0;
+      var dmg = 0, procs = LOG ? [] : null, critN = 0;
       for (var i = 0; i < n; i++) {
         var x = u[i]; if (!x.alive) continue;
         // Death Knight execute: if the boss is at ≤10% HP when the DK attacks, it's instantly defeated.
-        if (!_simBare && x.cn === "Death Knight" && (bossHp - dmg) <= MZE.bossHP * SIM.dk.executeFrac) return true;
+        if (!_simBare && x.cn === "Death Knight" && (bossHp - dmg) <= MZE.bossHP * SIM.dk.executeFrac) {
+          LG(r, "win", lab(x) + " EXECUTES the boss (≤" + Math.round(SIM.dk.executeFrac * 100) + "% HP) — WIN");
+          return true;
+        }
         var cc = x.critChance, cm = x.critMult, atkMul = 1, forced = false;
         if (!_simBare) {
-          if (x.cn === "Jarl") { var t = jarlTier(x.hp / x.maxHp); if (t) atkMul *= 1 + SIM.jarl.atkPerTier * t; }
-          else if (x.cn === "Sensei") { if (x.sensClean) cc += SIM.sensei.crit; }
-          else if (x.cn === "Daimyo") { if (r === 1) forced = true; }
-          else if (x.cn === "Acrobat") { if (x.dodgedLast) forced = true; }
-          else if (x.cn === "Conquistador") { if (x.consec > 0) cm += SIM.conq.perStack * Math.min(x.consec, SIM.conq.maxStacks); }
+          if (x.cn === "Jarl") { var t = jarlTier(x.hp / x.maxHp); if (t) { atkMul *= 1 + SIM.jarl.atkPerTier * t; if (LOG) procs.push(lab(x) + " rage×" + t); } }
+          else if (x.cn === "Sensei") { if (x.sensClean) { cc += SIM.sensei.crit; if (LOG) procs.push(lab(x) + " +crit (untouched)"); } }
+          else if (x.cn === "Daimyo") { if (r === 1) { forced = true; if (LOG) procs.push(lab(x) + " round-1 crit"); } }
+          else if (x.cn === "Acrobat") { if (x.dodgedLast) { forced = true; if (LOG) procs.push(lab(x) + " crit (post-dodge)"); } }
+          else if (x.cn === "Conquistador") { if (x.consec > 0) { cm += SIM.conq.perStack * Math.min(x.consec, SIM.conq.maxStacks); if (LOG) procs.push(lab(x) + " crit-stack×" + Math.min(x.consec, SIM.conq.maxStacks)); } }
           if (rudo && r <= SIM.rudo.rounds) cc += SIM.rudo.crit;
-          if (x.isChamp && x.champName === "Hemma") atkMul *= 1 + SIM.hemma.atkPerStack * x.hemmaStack;
+          if (x.isChamp && x.champName === "Hemma" && x.hemmaStack > 0) { atkMul *= 1 + SIM.hemma.atkPerStack * x.hemmaStack; if (LOG) procs.push(lab(x) + " ATK-stack×" + x.hemmaStack); }
         }
         var isCrit = forced || (rng() < Math.max(0, Math.min(1, cc / 100)));
+        if (isCrit) critN++;
         dmg += x.baseAtk * atkMul * (isCrit ? cm : 1);
         if (!_simBare && x.cn === "Conquistador") x.consec = isCrit ? x.consec + 1 : 0;
       }
       bossHp -= dmg;
-      if (bossHp <= 0) return true; // boss dead → win
+      if (LOG) {
+        if (rudo && r <= SIM.rudo.rounds) procs.unshift("Rudo +crit (party)");
+        LG(r, "dmg", "Party deals " + num(dmg) + (critN ? " (" + critN + " crit" + (critN > 1 ? "s" : "") + ")" : "") +
+          " → Boss " + num(Math.max(0, bossHp)) + " (" + Math.max(0, Math.round(bossHp / MZE.bossHP * 100)) + "%)" +
+          (procs.length ? " · " + procs.join(", ") : ""));
+      }
+      if (bossHp <= 0) { LG(r, "win", "Boss defeated — WIN (round " + r + ")"); return true; }
       // ---- boss attacks ----
       var totT = 0, aliveCnt = 0;
       for (var i = 0; i < n; i++) { u[i].dodgedThisRound = false; u[i].damagedThisRound = false; if (u[i].alive) { totT += Number(u[i].threat) || 0; aliveCnt++; } }
-      if (!aliveCnt) return false; // wiped
+      if (!aliveCnt) { LG(r, "loss", "Party wiped — LOSS (round " + r + ")"); return false; }
       // single-target by threat share
       var roll = rng() * (totT > 0 ? totT : aliveCnt), acc = 0, tgt = null;
       for (var i = 0; i < n; i++) {
@@ -1641,15 +1599,20 @@
         if (roll <= acc) { tgt = u[i]; break; }
       }
       if (!tgt) { for (var i = n - 1; i >= 0; i--) if (u[i].alive) { tgt = u[i]; break; } }
-      applyBossHit(tgt, r, rng, false);
+      var sres = applyBossHit(tgt, r, rng, false);
+      LG(r, sres.dodged ? "dodge" : (sres.crit ? "bosscrit" : "hit"), "Boss strikes " + lab(tgt) + ": " + (sres.dodged ? "DODGED" : (sres.crit ? "CRIT " + num(sres.dmg) : num(sres.dmg))));
       // AoE: hits every alive unit (per-unit dodge), no threat gate
-      if (rng() < MZE.aoeChance) { for (var i = 0; i < n; i++) if (u[i].alive) applyBossHit(u[i], r, rng, true); }
+      if (rng() < MZE.aoeChance) {
+        var aoeParts = LOG ? [] : null;
+        for (var i = 0; i < n; i++) if (u[i].alive) { var ares = applyBossHit(u[i], r, rng, true); if (LOG) aoeParts.push(lab(u[i]) + ": " + (ares.dodged ? "dodged" : num(ares.dmg))); }
+        LG(r, "aoe", "Boss AoE → " + (aoeParts ? aoeParts.join(" · ") : ""));
+      }
       // deaths — a Bishop spends its OWN survive-fatal first; otherwise a Lord's party-wide save covers
       // the ally; else the unit dies. Each save revives to 1 HP, once.
       for (var i = 0; i < n; i++) { var x = u[i]; if (x.alive && x.hp <= 0) {
-        if (x.selfSave && !x.usedSelfSave) { x.usedSelfSave = true; x.hp = 1; }
-        else if (allySaves > 0) { allySaves--; x.hp = 1; }
-        else { x.alive = false; }
+        if (x.selfSave && !x.usedSelfSave) { x.usedSelfSave = true; x.hp = 1; LG(r, "save", lab(x) + " survives a fatal blow → 1 HP"); }
+        else if (allySaves > 0) { allySaves--; x.hp = 1; LG(r, "save", lab(x) + " shielded by a Lord → 1 HP"); }
+        else { x.alive = false; LG(r, "death", lab(x) + " is defeated"); }
       } }
       // ---- end-of-round upkeep (healing, Hemma drain, Sensei/Acrobat state) ----
       if (!_simBare) {
@@ -1663,7 +1626,8 @@
           var victim = null;
           for (var i = 0; i < n; i++) { var x = u[i]; if (x.alive && x !== hemma && (!victim || x.hp > victim.hp)) victim = x; }
           if (victim) { var drain = victim.hp * SIM.hemma.drainFrac; victim.hp -= drain;
-            hemma.hp = Math.min(hemma.maxHp, hemma.hp + drain); if (hemma.hemmaStack < SIM.hemma.maxStacks) hemma.hemmaStack++; }
+            hemma.hp = Math.min(hemma.maxHp, hemma.hp + drain); if (hemma.hemmaStack < SIM.hemma.maxStacks) hemma.hemmaStack++;
+            LG(r, "heal", lab(hemma) + " drains " + lab(victim) + " (" + num(drain) + " HP) → self-heal + ATK stack"); }
         }
         for (var i = 0; i < n; i++) { var x = u[i]; if (!x.alive) continue;
           if (x.cn === "Sensei") { if (x.damagedThisRound) { x.sensClean = false; x.sensCnt = 0; }
@@ -1672,6 +1636,7 @@
         }
       }
     }
+    LG(cap, "loss", "Boss not killed before the " + cap + "-round cap — LOSS");
     return bossHp <= 0; // round cap reached → loss
   }
   // Average N seeded trials → win chance (0..1). Deterministic given the seed.
@@ -1710,7 +1675,7 @@
       (champ ? buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) : 0);
     var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : Infinity;
     if (hs.length !== partyCap(p)) return { grade: "D", winPct: 0, fail: true, reason: "undermanned", rounds: rounds };
-    if (partyBestBarrier(p, hs) * buff.barrierMult < BARRIER_POWER_TARGET) return { grade: "D", winPct: 0, fail: true, reason: "barrier", rounds: rounds };
+    if (state.barriers.length > 0 && partyBestBarrier(p, hs) * buff.barrierMult < BARRIER_POWER_TARGET) return { grade: "D", winPct: 0, fail: true, reason: "barrier", rounds: rounds };
     if (rounds >= MZE.roundCap) return { grade: "D", winPct: 0, fail: true, reason: "roundcap", rounds: rounds };
     var saves = hs.reduce(function (a, h) { return a + classSaves(h.className); }, 0);
     // Phase-2: the DISPLAYED grade comes from the Monte Carlo sim (models the conditional skills),
@@ -1725,6 +1690,17 @@
     return { grade: GRADE_LETTERS[winTier(w)], winPct: Math.round(w * 100), fail: false, reason: null, rounds: rounds };
   }
   function partyGrade(p) { return partyOutcome(p).grade; }
+  // One seeded sample fight for the "Simulate combat" replay → { win, log[] }. Pure combat (the barrier /
+  // undermanned context is surfaced separately via partyOutcome in the modal). Same engine as the grade.
+  function simulateReplay(p, seed) {
+    var hs = state.heroes.filter(function (h) { return h.partyId === p.id; });
+    var champ = getChampion(p.champName);
+    var buff = partyBuff(champ, hs.map(function (h) { return h.className; }));
+    var units = simUnits(hs, champ, buff);
+    var log = [];
+    var win = units.length ? simulateFight(units, mulberry32(seed >>> 0), { champName: champ ? champ.name : null }, log) : false;
+    return { win: win, log: log, units: units.length };
+  }
   function gradeImg(p) {
     var o = partyOutcome(p);
     var tip = o.fail
@@ -2019,19 +1995,41 @@
   // Discord button copies the pre-generated compact (composition-only) link; falls back to the full link.
   wireCopyButton(document.getElementById("shareDiscordBtn"), function () { return _compactLink || (shareText ? shareText.value : bareUrl()); });
 
-  // "Why I chose this" centered overlay (Recommended reasoning) — same open/close pattern as Share.
-  var reasonModal = document.getElementById("reasonModal");
-  var reasonBackdrop = document.getElementById("reasonBackdrop");
-  var reasonBody = document.getElementById("reasonBody");
-  function openReasonModal(text) {
-    if (reasonBody) reasonBody.textContent = text; // textContent — no HTML injection
-    [reasonModal, reasonBackdrop].forEach(function (el) { if (el) el.classList.remove("opacity-0", "pointer-events-none"); });
+  /* ---------------- Combat replay modal (Simulate combat) ---------------- */
+  var combatModal = document.getElementById("combatModal");
+  var combatTitle = document.getElementById("combatTitle");
+  var combatSummary = document.getElementById("combatSummary");
+  var combatBody = document.getElementById("combatBody");
+  var _combatPid = null, _combatSeed = 0;
+  var COMBAT_KCOL = { dmg: COL.emerald, hit: COL.muted, bosscrit: COL.rose, dodge: COL.amber, aoe: COL.amber, save: COL.amber, death: COL.rose, heal: "#7DD3FC", win: COL.emerald, loss: COL.rose };
+  function renderCombatReplay() {
+    if (!combatBody) return;
+    var p = null; for (var i = 0; i < state.parties.length; i++) if (state.parties[i].id === _combatPid) { p = state.parties[i]; break; }
+    if (!p) return;
+    if (combatTitle) combatTitle.textContent = "Combat replay — " + p.name;
+    var rep = simulateReplay(p, _combatSeed);
+    var o = partyOutcome(p);
+    var col = rep.win ? COL.emerald : COL.rose;
+    var failNote = o.fail ? (o.reason === "barrier" ? "barrier not broken" : o.reason === "undermanned" ? "party not full" : o.reason === "roundcap" ? "can't beat the round cap" : "") : "";
+    combatSummary.innerHTML =
+      '<span style="color:' + col + '" class="font-bold">' + (rep.win ? "WIN" : "LOSS") + '</span> this sample · displayed grade <b>' + o.grade + '</b> (~' + o.winPct + '% over many fights)' +
+      (failNote ? ' · <span style="color:' + COL.rose + '">' + escH(failNote) + '</span>' : '') +
+      '<div class="text-textSecondary text-xs mt-0.5">This is ONE random fight; the grade % is the average of hundreds. Use Re-roll to see another.</div>';
+    var rows = [], lastR = 0;
+    rep.log.forEach(function (e) {
+      if (e.r !== lastR) { rows.push('<div class="mt-2 mb-0.5 font-bold text-textSecondary uppercase tracking-wider text-[10px]">Round ' + e.r + '</div>'); lastR = e.r; }
+      rows.push('<div class="font-mono pl-2" style="color:' + (COMBAT_KCOL[e.k] || COL.text) + '">' + escH(e.t) + '</div>');
+    });
+    combatBody.innerHTML = rows.join("") || '<div class="text-textSecondary">No combat to show (empty party).</div>';
+    combatBody.scrollTop = 0;
   }
-  function closeReasonModal() { [reasonModal, reasonBackdrop].forEach(function (el) { if (el) el.classList.add("opacity-0", "pointer-events-none"); }); }
-  var reasonCloseBtn = document.getElementById("reasonClose");
-  if (reasonCloseBtn) reasonCloseBtn.addEventListener("click", closeReasonModal);
-  if (reasonBackdrop) reasonBackdrop.addEventListener("click", closeReasonModal);
-  if (reasonModal) reasonModal.addEventListener("click", function (e) { if (e.target === reasonModal) closeReasonModal(); });
+  function openCombatModal(pid) { _combatPid = pid; _combatSeed = hashStr("rep" + pid) >>> 0; renderCombatReplay(); if (combatModal) combatModal.classList.remove("opacity-0", "pointer-events-none"); }
+  function closeCombatModal() { if (combatModal) combatModal.classList.add("opacity-0", "pointer-events-none"); }
+  var combatCloseBtn = document.getElementById("combatClose");
+  if (combatCloseBtn) combatCloseBtn.addEventListener("click", closeCombatModal);
+  var combatRerollBtn = document.getElementById("combatReroll");
+  if (combatRerollBtn) combatRerollBtn.addEventListener("click", function () { _combatSeed = (_combatSeed + 0x9E3779B1) >>> 0; renderCombatReplay(); });
+  if (combatModal) combatModal.addEventListener("click", function (e) { if (e.target === combatModal) closeCombatModal(); });
 
   // Generic alert/notice overlay (replaces native alert()).
   var alertModal = document.getElementById("alertModal");
@@ -2291,12 +2289,35 @@
         '<input type="text" inputmode="numeric" value="' + (maxV != null ? maxV : "") + '" placeholder="–" data-filter="max" data-cls="' + escA(cn) + '" class="' + STATFIELD + ' w-14">' +
       '</div>';
     }).join("");
-    filtersBody.innerHTML = POWER_HEADER + 'Build filters</div>' +
+    // Prioritize Elements = the active barriers each party must break (≥320 power). Player-configurable.
+    var barrierChips = COVERAGE_ELS.map(function (el) {
+      var on = state.barriers.indexOf(el) >= 0;
+      return '<label class="flex items-center gap-1.5 bg-surface border-2 rounded-lg px-2 py-1 cursor-pointer text-sm capitalize ' +
+        (on ? "border-accent text-textPrimary" : "border-borderc text-textSecondary") + '">' +
+        '<input type="checkbox" data-barrier="' + el + '"' + (on ? " checked" : "") + ' class="w-4 h-4 accent-accent cursor-pointer">' +
+        barrierIcon(el, "w-4 h-4") + el + '</label>';
+    }).join("");
+    var barrierSection = POWER_HEADER + 'Prioritize elements (barriers)</div>' +
+      '<p class="text-xs text-textSecondary leading-relaxed mb-1">Check the elemental barriers this zone uses. Each party must break <b>one</b> of them (≥ ' + BARRIER_POWER_TARGET + ' power). Default: dark / light / earth (T16 MZE). Unchecking all removes the barrier requirement.</p>' +
+      '<div class="flex flex-wrap gap-2 mb-4">' + barrierChips + '</div>';
+    filtersBody.innerHTML = barrierSection + POWER_HEADER + 'Build filters</div>' +
       '<p class="text-xs text-textSecondary leading-relaxed mb-1"><b>Exclude</b> = never use. <b>Min</b> = require this many in the roster. <b>Max</b> = cap. Whole-roster; Min applies when generating (Top-up / Recommended), Auto Sort honors Exclude + Max.</p>' +
       header + rows;
   }
   if (filtersBody) {
     filtersBody.addEventListener("change", function (e) {
+      // Prioritize Elements: toggle an active barrier; barriers drive grades + Roster Health → re-render.
+      var bar = e.target.closest('[data-barrier]');
+      if (bar) {
+        var bel = bar.dataset.barrier, bi = state.barriers.indexOf(bel);
+        if (bar.checked) { if (bi < 0) state.barriers.push(bel); }
+        else if (bi >= 0) state.barriers.splice(bi, 1);
+        // keep stored order canonical (COVERAGE_ELS order) for a stable Roster Health note
+        state.barriers.sort(function (a, b) { return COVERAGE_ELS.indexOf(a) - COVERAGE_ELS.indexOf(b); });
+        buildFiltersPanel();
+        render();
+        return;
+      }
       var el = e.target.closest('[data-filter="exclude"]'); if (!el) return;
       var cn = el.dataset.cls;
       if (el.checked) state.filters.exclude[cn] = true; else delete state.filters.exclude[cn];
@@ -2360,7 +2381,7 @@
   function heroContrib(h, el) { var e = elOf(h.className); if (e === el) return heroStat(h, "power"); if (e === "all") return heroStat(h, "power") * MZE.allBarrierFactor; return 0; }
   function champContrib(p, el) { var ce = partyChampEl(p); if (ce === el) return partyChampPower(p); if (ce === "all") return partyChampPower(p) * MZE.allBarrierFactor; return 0; }
   function barrierSum(p, hs, el) { var s = champContrib(p, el); for (var i = 0; i < hs.length; i++) s += heroContrib(hs[i], el); return s; }
-  function partyBestBarrier(p, hs) { var b = 0; for (var i = 0; i < BARRIERS.length; i++) { var s = barrierSum(p, hs, BARRIERS[i]); if (s > b) b = s; } return b; }
+  function partyBestBarrier(p, hs) { var b = 0; for (var i = 0; i < state.barriers.length; i++) { var s = barrierSum(p, hs, state.barriers[i]); if (s > b) b = s; } return b; }
 
   function autoBuild(rng) {
     var parties = state.parties;
@@ -2393,8 +2414,8 @@
         var cur = assign[p.id];
         var capacity = partyCap(p) - cur.length;
         if (capacity <= 0) continue;
-        for (var bi = 0; bi < BARRIERS.length; bi++) {
-          var el = BARRIERS[bi];
+        for (var bi = 0; bi < state.barriers.length; bi++) {
+          var el = state.barriers[bi];
           var base = barrierSum(p, cur, el);
           if (base >= BARRIER_POWER_TARGET) { if (!best || best.cost > 0) best = { pid: p.id, heroes: [], cost: 0 }; continue; }
           var deficit = BARRIER_POWER_TARGET - base;
