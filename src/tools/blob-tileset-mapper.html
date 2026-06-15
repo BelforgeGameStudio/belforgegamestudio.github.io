@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blob Tileset Mapper - Belforge</title>
+    <meta name="description" content="Free browser-based blob tileset mapper. Map 47-tile autotile sprite sheets to 8-bit bitmask values for procedural terrain generation. Export to C# or JSON.">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" color="#3b82f6">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/tailwind.css">
+    <style>
+        /* ==========================================================================
+           Blob Tileset Mapper - Component Styles
+           Plain CSS (no @apply — these run in an inline <style> block)
+           Theme tokens: dark=#0d0d0f  card=#161619  hover=#1c1c20
+                         accent=#e85d04  glow=rgba(232,93,4,.15)
+                         border=#2a2a2e  warning=#f39c12  text=#f0f0f0
+                         muted=#888  dim=#666
+           ========================================================================== */
+
+        /* --- Sprite Tiles --- */
+        .sprite-tile {
+            position: relative; cursor: pointer;
+            border: 3px solid #2a2a2e; border-radius: 6px;
+            overflow: hidden; transition: all 150ms;
+            display: flex; flex-direction: column;
+            background-color: #0d0d0f;
+            background-image:
+                linear-gradient(45deg, #1c1c20 25%, transparent 25%),
+                linear-gradient(-45deg, #1c1c20 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #1c1c20 75%),
+                linear-gradient(-45deg, transparent 75%, #1c1c20 75%);
+            background-size: 8px 8px;
+            background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+        }
+        .sprite-tile:hover { border-color: #e85d04; transform: scale(1.05); z-index: 10; }
+        .sprite-tile.selected { border-color: #f39c12; transform: scale(1.05); box-shadow: 0 0 0 3px rgba(243,156,18,.3); }
+        .sprite-tile.assigned { opacity: .4; border-color: #e85d04; }
+        .sprite-tile.assigned:hover { opacity: .7; }
+        .sprite-tile.assigned::after {
+            content: '✓'; position: absolute; top: .125rem; right: .25rem;
+            color: #e85d04; font-size: 11px; line-height: 16px; font-weight: 700;
+            text-shadow: 0 1px 2px rgba(0,0,0,.8);
+        }
+        .sprite-tile canvas { display: block; image-rendering: pixelated; }
+
+        /* --- Bitmask Items --- */
+        .bitmask-item {
+            background-color: #0d0d0f; border: 1px solid #2a2a2e; border-radius: 3px;
+            padding: 2px; cursor: pointer; transition: all 150ms;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .bitmask-item:hover { border-color: #e85d04; }
+        .bitmask-item.assigned { border-color: #e85d04; background-color: rgba(232,93,4,.15); }
+        .bitmask-item.target { border-color: #f39c12; box-shadow: 0 0 12px rgba(243,156,18,.4); }
+
+        /* --- Mini-Grid (3×3 bitmask visualization) --- */
+        .mini-grid {
+            display: grid; gap: 1px; margin-bottom: 1px;
+            grid-template-columns: repeat(3, 9px);
+            grid-template-rows: repeat(3, 9px);
+        }
+        .mini-cell { border-radius: 2px; }
+        .mini-cell.center { background-color: #1c1c20; }
+        .mini-cell.neighbor-on { background-color: #e85d04; }
+        .mini-cell.neighbor-off { background-color: #161619; }
+        .mini-cell.neighbor-disabled { background-color: #0d0d0f; opacity: .3; }
+
+        /* --- Showcase Grid (All 47 Tiles) --- */
+        .showcase-cell {
+            width: 2.25rem; height: 2.25rem; background-color: #0d0d0f;
+            border-radius: 6px; cursor: pointer; position: relative;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 200ms;
+        }
+        .showcase-cell:hover { transform: scale(1.1); z-index: 10; }
+        .showcase-cell.unmapped { border: 1px dashed #f39c12; background: rgba(243,156,18,.15); }
+        .showcase-cell canvas { image-rendering: pixelated; width: 100%; height: 100%; }
+
+        /* --- Test Pattern Grid (13×13) --- */
+        .test-pattern-grid {
+            display: grid; gap: 1px; background-color: #2a2a2e;
+            border-radius: 6px; overflow: hidden; width: 100%;
+            grid-template-columns: repeat(17, 1fr);
+        }
+        .test-cell {
+            aspect-ratio: 1; background-color: #0d0d0f;
+            cursor: pointer; position: relative;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .test-cell.active { background-color: #161619; }
+        .test-cell.unmapped { background: rgba(243,156,18,.2); }
+        .test-cell canvas { image-rendering: pixelated; width: 100%; height: 100%; }
+
+        /* --- Sandbox Grid (7×7) --- */
+        .sandbox-grid {
+            display: grid; gap: 1px; background-color: #2a2a2e;
+            border-radius: 6px; overflow: hidden; width: fit-content;
+            grid-template-columns: repeat(7, 32px);
+            grid-template-rows: repeat(7, 32px);
+        }
+        .sandbox-cell {
+            width: 2rem; height: 2rem; background-color: #0d0d0f;
+            cursor: pointer; position: relative;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .sandbox-cell.active { background-color: #161619; }
+        .sandbox-cell.unmapped { border: 1px dashed #f39c12; background: rgba(243,156,18,.2); }
+        .sandbox-cell canvas { image-rendering: pixelated; width: 100%; height: 100%; }
+
+        /* --- Missing Mapping Chips --- */
+        .missing-item {
+            display: inline-block; padding: .125rem .5rem; margin: .125rem;
+            border-radius: 6px; cursor: pointer;
+            font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 14px;
+            color: #f39c12; transition: color 200ms, background-color 200ms;
+            background: rgba(243,156,18,.15);
+        }
+        .missing-item:hover { background: rgba(243,156,18,.3); }
+
+        /* --- Tooltip --- */
+        .mapper-tooltip {
+            position: fixed; background-color: #161619;
+            border: 1px solid #e85d04; border-radius: 6px; padding: .625rem;
+            z-index: 1000; pointer-events: none; max-width: 180px;
+        }
+
+        /* --- Export Output --- */
+        .export-output {
+            background-color: #0d0d0f; border: 1px solid #2a2a2e; border-radius: 6px;
+            padding: .625rem; font-family: 'JetBrains Mono', monospace;
+            font-size: 10px; line-height: 14px; color: #888;
+            white-space: pre; max-height: 11rem; overflow-y: auto;
+        }
+
+        /* --- Drop Zone --- */
+        .sprite-drop-zone {
+            border: 2px dashed #2a2a2e; border-radius: 8px; padding: 1.5rem;
+            text-align: center; cursor: pointer; transition: all 300ms; margin-bottom: 1rem;
+        }
+        .sprite-drop-zone:hover,
+        .sprite-drop-zone.dragover { border-color: #e85d04; background-color: rgba(232,93,4,.15); }
+        .sprite-drop-zone input { display: none; }
+
+        /* --- Sprite Grid --- */
+        .sprite-grid { display: grid; gap: .375rem; justify-content: flex-start; }
+
+        /* --- Bitmask Sprite Preview --- */
+        .bitmask-sprite-preview {
+            width: 29px; height: 29px; margin-top: 1px;
+            border-radius: 2px; image-rendering: pixelated;
+        }
+
+        /* --- Responsive: Desktop-Only Gate --- */
+        .desktop-only-notice { display: none; }
+        @media (max-width: 1059px) {
+            .desktop-only-notice {
+                display: flex; align-items: center; justify-content: center;
+                flex-direction: column; gap: 1rem;
+                position: fixed; inset: 0; z-index: 9999;
+                background-color: #0d0d0f; color: #f0f0f0;
+                padding: 2rem; text-align: center;
+            }
+            .desktop-only-notice h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1.5rem; font-weight: 700; }
+            .desktop-only-notice p { color: #888; font-size: .875rem; max-width: 28rem; }
+            .desktop-only-notice a {
+                display: inline-block; margin-top: .5rem; padding: .5rem 1.5rem;
+                background-color: #e85d04; color: #fff; border-radius: 6px;
+                text-decoration: none; font-weight: 600; font-size: .875rem;
+            }
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+    <nav class="nav">
+    <a href="/index.html" class="logo nav-logo">
+        <div class="logo-icon nav-logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <span>Belforge</span>
+    </a>
+    <div class="nav-links flex items-center gap-1">
+        <a href="/index.html" class="nav-link" data-nav="home">Home</a>
+        <!--<a href="/games.html" class="nav-link" data-nav="games">Games</a>-->
+        <a href="/tools.html" class="nav-link" data-nav="tools">Tools</a>
+    </div>
+</nav>
+<script>
+(function() {
+    var path = window.location.pathname;
+    var nav = 'home';
+    if (path.includes('/tools')) nav = 'tools';
+    else if (path.includes('/games')) nav = 'games';
+    var el = document.querySelector('[data-nav="' + nav + '"]');
+    if (el) el.classList.add('active');
+})();
+</script>
+
+
+    <!-- Responsive gate: shown only below 1100 px -->
+    <div class="desktop-only-notice">
+        <h2>Desktop Required</h2>
+        <p>The Blob Tileset Mapper needs at least 1060 px of screen width to display its three-panel workspace. Please use a desktop browser or widen your window.</p>
+        <a href="/tools.html">&larr; Back to Tools</a>
+    </div>
+
+    <!-- Full-width three-panel layout -->
+    <div class="h-screen-nav mt-[73px] flex flex-col">
+        <!-- Top bar with title and actions -->
+        <div class="flex-shrink-0 px-6 py-3 border-b border-border bg-dark-card flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <h1 class="font-display text-xl font-bold">Blob Tileset Mapper</h1>
+                <span class="text-text-muted text-sm">Map 47-tile autotile sheets to 8-bit bitmask values</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="progress" class="font-mono text-sm font-semibold text-accent">0/47 mapped</span>
+                <button class="btn btn-sm btn-secondary" onclick="clearAllMappings()">Clear All</button>
+                <button class="btn btn-sm btn-secondary" onclick="exportJSON()">Export JSON</button>
+                <button class="btn btn-sm btn-secondary" onclick="importJSON()">Import JSON</button>
+            </div>
+        </div>
+
+        <!-- Three-panel main area -->
+        <div class="flex-1 flex min-h-0">
+            <!-- Panel 1: Sprite Sheet -->
+            <div class="w-1/3 min-w-[320px] max-w-[380px] border-r border-border flex flex-col bg-dark-card">
+                <div class="flex-shrink-0 px-5 py-3 border-b border-border flex justify-between items-center">
+                    <h2 class="font-display text-sm font-semibold text-accent">Sprite Sheet</h2>
+                    <div class="flex items-center gap-3">
+                        <span id="sprite-count" class="text-xs text-text-muted">No sprites loaded</span>
+                        <a id="standard-layout-btn" class="text-xs text-accent cursor-pointer hover:underline hidden" onclick="applyStandardLayout()">Standard Layout</a>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5">
+                    <!-- Drop zone -->
+                    <div class="sprite-drop-zone" id="drop-zone">
+                        <p class="text-sm text-text-muted">📁 Drop sprite sheet PNG here or click to browse</p>
+                        <input type="file" id="file-input" accept="image/png">
+                    </div>
+                    
+                    <!-- Tile config -->
+                    <div class="flex flex-wrap gap-3 items-center mb-4 text-xs">
+                        <label class="text-text-muted uppercase tracking-wider">Tile Size:</label>
+                        <input type="number" class="input w-14 text-center" id="tile-width" value="32" min="8" max="256">
+                        <span class="text-text-muted">×</span>
+                        <input type="number" class="input w-14 text-center" id="tile-height" value="32" min="8" max="256">
+                        <button class="btn btn-sm" onclick="reloadSpriteSheet()">Reload</button>
+                    </div>
+                    
+                    <!-- Zoom control -->
+                    <div class="flex items-center gap-3 mb-4 text-xs">
+                        <label class="text-text-muted uppercase tracking-wider">Zoom:</label>
+                        <input type="range" id="display-zoom" min="48" max="128" value="65"
+                               class="w-24 accent-accent" onchange="renderSpriteGrid()">
+                    </div>
+                    
+                    <!-- Sprite grid -->
+                    <div class="sprite-grid" id="sprite-grid"></div>
+                </div>
+            </div>
+
+            <!-- Panel 2: Bitmask Reference -->
+            <div class="flex-1 min-w-[360px] border-r border-border flex flex-col bg-dark-card">
+                <div class="flex-shrink-0 px-5 py-3 border-b border-border flex justify-between items-center">
+                    <h2 class="font-display text-sm font-semibold text-accent">Bitmask Reference (47 Values)</h2>
+                    <div class="flex items-center gap-3">
+                        <a class="text-xs text-accent cursor-pointer hover:underline" onclick="generateShareURL()">Share URL</a>
+                        <button class="btn btn-sm" onclick="deselectAll()">Deselect</button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto" style="padding:1rem 1.25rem">
+                    <!-- Bitmask grid -->
+                    <div id="bitmask-grid" class="grid gap-px" style="grid-template-columns: repeat(16, 1fr);"></div>
+                    
+                    <!-- In-Context Preview (moved here from Live Validation) -->
+                    <div class="pt-4 border-border">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">🧪 In-Context Preview</span>
+                            <span class="text-2xs text-text-dim">Click to toggle. <span id="pattern-coverage">0/47 bitmasks used</span></span>
+                            <div class="flex gap-1">
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="resetTestPattern()">Reset</button>
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="clearTestPattern()">Clear</button>
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="fillTestPattern()">Fill</button>
+                            </div>
+                        </div>
+                        <div class="test-pattern-grid" id="test-pattern-grid"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 3: Live Validation -->
+            <div class="w-[380px] flex-shrink-0 flex flex-col bg-dark-card">
+                <div class="flex-shrink-0 px-5 py-3 border-b border-border flex justify-between items-center">
+                    <h2 class="font-display text-sm font-semibold text-accent">Live Validation</h2>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5 space-y-5">
+                    <!-- All 47 Tiles Showcase -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">🎯 All 47 Tiles</span>
+                            <span id="test-coverage" class="text-2xs text-text-muted">0/47 mapped</span>
+                        </div>
+                        <p class="text-2xs text-text-dim mb-2">Every bitmask value. Click to jump. Orange = unmapped.</p>
+                        <div id="showcase-grid" class="grid gap-0.5" style="grid-template-columns: repeat(8, 36px);"></div>
+                    </div>
+
+                    <!-- Missing Mappings -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">⚠️ Missing Mappings</span>
+                        </div>
+                        <div id="missing-list" class="bg-dark rounded-md p-2.5 text-xs text-text-muted max-h-20 overflow-y-auto">
+                            <em class="text-text-dim">All mapped!</em>
+                        </div>
+                    </div>
+
+                    <!-- Export section -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">📦 Export</span>
+                        </div>
+                        <div class="flex gap-2 mb-3">
+                            <select id="export-format" class="input text-xs flex-1 py-2.5">
+                                <option value="csharp">C# Array</option>
+                                <option value="unity">Unity ScriptableObject</option>
+                                <option value="godot">Godot .tres</option>
+                                <option value="json">JSON</option>
+                            </select>
+                            <button class="btn btn-primary text-xs py-2.5 px-4" onclick="generateExport()">Generate</button>
+                            <button class="btn btn-secondary text-xs py-2.5 px-4" onclick="copyExport()">📋 Copy</button>
+                        </div>
+                        <div class="export-output" id="export-output">// Select format and click "Generate"</div>
+                    </div>
+
+                    <!-- Interactive Sandbox -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs text-accent font-semibold">🎮 Sandbox</span>
+                            <div class="flex gap-1">
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="clearPreview()">Clear</button>
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="fillPreview()">Fill</button>
+                                <button class="btn btn-sm text-2xs py-1 px-2" onclick="randomPreview()">Random</button>
+                            </div>
+                        </div>
+                        <p class="text-2xs text-text-dim mb-2">Click cells to toggle:</p>
+                        <div class="sandbox-grid" id="preview-grid"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast"></div>
+    
+    <!-- Tooltip -->
+    <div id="tooltip" class="mapper-tooltip hidden"></div>
+
+    <footer class="py-8 px-10 text-center text-text-muted text-sm border-t border-border">
+    <p>&copy; 2026 Belforge Game Studio. Built with passion.</p>
+</footer>
+
+    <!-- Footer hidden in full-screen tool mode -->
+
+    <script src="/js/utils.js"></script>
+    <script src="/js/blob-tileset-mapper.js"></script>
+
+</body>
+</html>
