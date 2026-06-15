@@ -252,6 +252,15 @@
     }
 
     var counts = {}; // running roster class counts (for filter caps/min as the build commits)
+    // Soft per-class diversity cap: the breadth (`diversify`) and survivability (`flexRefine`) passes
+    // won't pile a single class past this, so one standout (e.g. Acrobat once air is a barrier) can't
+    // flood the roster. SOFT, not hard: `buildFor` can still exceed it when filling is forced, and a
+    // class's Min filter overrides it. Tune; `fMax` (Filters) is the hard cap players set themselves.
+    var SOFT_CLASS_CAP = 6;
+    function softCapBlocks(cn, slots) { // would adding one more `cn` (to a party with these slots) exceed the cap?
+      var inParty = 0; for (var k = 0; k < slots.length; k++) if (slots[k] === cn) inParty++;
+      return (counts[cn] || 0) + inParty >= Math.max(SOFT_CLASS_CAP, fMin(cn));
+    }
     // Classes matching `filter` and not excluded, sorted by EFFECTIVE (crit-folded) ATK desc, priority
     // asc. Using effClassAtk (not raw ATK) so candidate generation values crit chance / crit-damage the
     // same way the sim and diversify do — a high-crit class no longer ranks below a
@@ -279,23 +288,27 @@
       var slots = [];
       var local = {}; Object.keys(counts).forEach(function (k) { local[k] = counts[k]; });
       function room(cn) { return !fExclude(cn) && (local[cn] || 0) < fMax(cn); }
+      function softOK(cn) { return (local[cn] || 0) < Math.max(SOFT_CLASS_CAP, fMin(cn)); } // under the diversity cap (soft)
       function add(cn) { slots.push(cn); local[cn] = (local[cn] || 0) + 1; }
       function barPow() { var s = champCovers(p, el); for (var i = 0; i < slots.length; i++) s += contrib(slots[i], el); return s; }
       // Exactly one tank (slot 0): the caller's pick if it has room, else the best tank that does.
       if (tankCn && room(tankCn)) add(tankCn);
       else { var t = tanksByAtk.filter(room)[0]; if (t) add(t); }
-      // Cover the barrier with the highest-ATK matching DPS that has room.
+      // Cover the barrier with the highest-ATK matching DPS that has room (prefer under the soft cap).
       while (barPow() < BARRIER_POWER_TARGET && slots.length < cap) {
         var md = dpsByAtk.filter(function (cn) { return contrib(cn, el) > 0 && room(cn); });
         if (!md.length) break;
-        add(md[0]);
+        var mdPref = md.filter(softOK);
+        add(mdPref.length ? mdPref[0] : md[0]);
       }
-      // Fill the rest: prefer under-min required classes, else highest-ATK DPS (max kill speed).
+      // Fill the rest: under-min required classes first, then under-soft-cap (diversity), else highest-ATK.
       while (slots.length < cap) {
         var avail = dpsByAtk.filter(room);
         if (!avail.length) { var any = allClasses.filter(room); if (!any.length) break; add(any[0]); continue; }
         var needed = avail.filter(function (cn) { return (local[cn] || 0) < fMin(cn); });
-        add(needed.length ? needed[0] : avail[0]);
+        if (needed.length) { add(needed[0]); continue; }
+        var pref = avail.filter(softOK);
+        add(pref.length ? pref[0] : avail[0]);
       }
       return slots;
     }
@@ -388,7 +401,7 @@
         var curPref = slotPref(out[i], local);
         var pool = (i === 0) ? tanksByAtk : dpsByAtk; // keep exactly one tank (slot 0)
         var cands = pool.filter(function (cn) {
-          return CLASS[cn].element !== "all" && !fExclude(cn) && (counts[cn] || 0) < fMax(cn) && prefLess(slotPref(cn, local), curPref);
+          return CLASS[cn].element !== "all" && !fExclude(cn) && (counts[cn] || 0) < fMax(cn) && !softCapBlocks(cn, out) && prefLess(slotPref(cn, local), curPref);
         }).sort(function (a, b) { var pa = slotPref(a, local), pb = slotPref(b, local); return prefLess(pa, pb) ? -1 : (prefLess(pb, pa) ? 1 : 0); });
         for (var j2 = 0; j2 < cands.length; j2++) {
           var trial = out.slice(); trial[i] = cands[j2];
@@ -428,7 +441,7 @@
         var bestCn = out[i], bestWin = cur;
         for (var c = 0; c < flexPool.length; c++) {
           var cn = flexPool[c];
-          if (cn === out[i] || fExclude(cn) || (counts[cn] || 0) >= fMax(cn)) continue;
+          if (cn === out[i] || fExclude(cn) || (counts[cn] || 0) >= fMax(cn) || softCapBlocks(cn, out)) continue;
           var trial = out.slice(); trial[i] = cn;
           var w = scoreOf(p, el, trial).win;                 // tier-4 (barrier broken / undermanned) → win 0, auto-rejected
           if (w > bestWin + FLEX_WIN_EPS) { bestWin = w; bestCn = cn; }
@@ -1507,9 +1520,10 @@
     return Math.max(0, Math.min(cap, effEva / 100));
   }
   // Apply one boss attack to a unit (single-target can crit; AoE is a flat DEF-reduced hit). Mutates hp.
-  // Returns { dodged, dmg, crit } so the combat-replay log can describe what happened.
-  function applyBossHit(x, r, rng, isAoe) {
-    if (rng() < dodgeProbOf(x, r)) { x.dodgedThisRound = true; return { dodged: true, dmg: 0, crit: false }; }
+  // Returns a { dodged, dmg, crit } info object ONLY when `wantInfo` (the combat-replay log) — the hot
+  // grade/optimizer path passes wantInfo=false so it allocates nothing per hit (avoids heavy GC churn).
+  function applyBossHit(x, r, rng, isAoe, wantInfo) {
+    if (rng() < dodgeProbOf(x, r)) { x.dodgedThisRound = true; return wantInfo ? { dodged: true, dmg: 0, crit: false } : null; }
     var dmg, crit = false;
     if (isAoe) {
       dmg = MZE.aoeHit * mzeDefMult(x.def);
@@ -1521,7 +1535,7 @@
     }
     x.hp -= dmg;
     x.damagedThisRound = true;
-    return { dodged: false, dmg: dmg, crit: crit };
+    return wantInfo ? { dodged: false, dmg: dmg, crit: crit } : null;
   }
   // Resolve ONE fight → true (boss dead before the round cap) / false (wiped or hit the cap).
   // `rng` is a mulberry32 stream (advanced across trials); `opts` = { saves, champName }.
@@ -1599,13 +1613,13 @@
         if (roll <= acc) { tgt = u[i]; break; }
       }
       if (!tgt) { for (var i = n - 1; i >= 0; i--) if (u[i].alive) { tgt = u[i]; break; } }
-      var sres = applyBossHit(tgt, r, rng, false);
-      LG(r, sres.dodged ? "dodge" : (sres.crit ? "bosscrit" : "hit"), "Boss strikes " + lab(tgt) + ": " + (sres.dodged ? "DODGED" : (sres.crit ? "CRIT " + num(sres.dmg) : num(sres.dmg))));
+      var sres = applyBossHit(tgt, r, rng, false, LOG);
+      if (LOG) LG(r, sres.dodged ? "dodge" : (sres.crit ? "bosscrit" : "hit"), "Boss strikes " + lab(tgt) + ": " + (sres.dodged ? "DODGED" : (sres.crit ? "CRIT " + num(sres.dmg) : num(sres.dmg))));
       // AoE: hits every alive unit (per-unit dodge), no threat gate
       if (rng() < MZE.aoeChance) {
         var aoeParts = LOG ? [] : null;
-        for (var i = 0; i < n; i++) if (u[i].alive) { var ares = applyBossHit(u[i], r, rng, true); if (LOG) aoeParts.push(lab(u[i]) + ": " + (ares.dodged ? "dodged" : num(ares.dmg))); }
-        LG(r, "aoe", "Boss AoE → " + (aoeParts ? aoeParts.join(" · ") : ""));
+        for (var i = 0; i < n; i++) if (u[i].alive) { var ares = applyBossHit(u[i], r, rng, true, LOG); if (LOG) aoeParts.push(lab(u[i]) + ": " + (ares.dodged ? "dodged" : num(ares.dmg))); }
+        if (LOG) LG(r, "aoe", "Boss AoE → " + (aoeParts ? aoeParts.join(" · ") : ""));
       }
       // deaths — a Bishop spends its OWN survive-fatal first; otherwise a Lord's party-wide save covers
       // the ally; else the unit dies. Each save revives to 1 HP, once.
