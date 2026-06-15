@@ -31,7 +31,6 @@
   // the optimizer knobs: breadth on/off (spread barriers + diversify pass), the breadth floor, and the
   // soft per-class cap. From meta min-max (concentrate) to a resilient well-rounded roster (spread).
   var OBJECTIVES = {
-    maxwin:    { label: "Max win",   breadth: false, floor: 0, softCap: 8, desc: "Stack the strongest classes on the strongest barrier — closest to the meta." },
     balanced:  { label: "Balanced",  breadth: true,  floor: 3, softCap: 6, desc: "Strong, with enough class + barrier coverage to not be fragile." },
     resilient: { label: "Resilient", breadth: true,  floor: 3, softCap: 4, desc: "Max diversity + barrier coverage — survives zone / gear changes." }
   };
@@ -178,7 +177,7 @@
     // Active barrier elements (player-configurable in Filters). Each party must break ONE of these
     // (≥ BARRIER_POWER_TARGET). Empty = no barrier requirement this zone.
     barriers: DEFAULT_BARRIER_ELS.slice(),
-    // How Recommended optimizes (maxwin | balanced | resilient). See OBJECTIVES.
+    // How Recommended optimizes (balanced | resilient). See OBJECTIVES.
     objective: DEFAULT_OBJECTIVE
   };
   QUALITIES.forEach(function (q) { state.classStatsByQuality[q] = emptyClassTable(); });
@@ -263,7 +262,7 @@
     }
 
     var counts = {}; // running roster class counts (for filter caps/min as the build commits)
-    // Roster Objective knobs (Max win / Balanced / Resilient) — see OBJECTIVES.
+    // Roster Objective knobs (Balanced / Resilient) — see OBJECTIVES.
     var OBJ = OBJECTIVES[state.objective] || OBJECTIVES[DEFAULT_OBJECTIVE];
     var BREADTH_ON = OBJ.breadth; // spread across barriers + run the diversify pass
     // Soft per-class diversity cap: the breadth (`diversify`) and survivability (`flexRefine`) passes
@@ -465,8 +464,75 @@
       return out;
     }
 
+    // ---- Global rebalancing pass (Recommended's "second pass") ----
+    // The greedy build optimizes each party in isolation and in array order, so the first parties grab the
+    // strongest classes and later ones eat leftovers — and because per-party win% saturates near 100%,
+    // nothing redistributes that overkill (the "lots of 99–100%, not the best roster" complaint). This pass
+    // takes the FINISHED roster and steepest-ascent hill-climbs SWAPS of non-tank heroes BETWEEN parties,
+    // keeping a swap only when it improves a non-saturating global objective: maximize the MINIMUM party
+    // win%, tie-broken by the SUM (lexicographic — lift the weakest team first, then total power). Pure
+    // swaps preserve the global class multiset, so element breadth / soft caps / filter caps / the 1-tank
+    // rule are all INVARIANT; the only per-party thing that can change is barrier coverage, which the tier-4
+    // guard rejects. So it never trades away roster health — it just reassigns the SAME classes (and honors
+    // each party's champion) to where they clear best. Reuses the memoized sim (`_simScoreCache`), so the
+    // repeated re-scores are mostly cache hits.
+    function rebalanceRoster() {
+      var groups = [];
+      state.parties.forEach(function (p) {
+        var hs = heroes.filter(function (h) { return h.partyId === p.id; });
+        if (hs.length === partyCap(p)) groups.push({ p: p, hs: hs }); // only full, scorable parties
+      });
+      if (groups.length < 2) return;
+      function slotsOf(g) { return g.hs.map(function (h) { return h.className; }); }
+      // el only sets scoreOf's `align` field (ignored here); barrier coverage is computed over ALL
+      // state.barriers regardless, so pass null.
+      function evalG(g) { return scoreOf(g.p, null, slotsOf(g)); }
+      function objMin(a) { var m = Infinity; for (var k = 0; k < a.length; k++) { var v = a[k].tier === 4 ? -1 : a[k].win; if (v < m) m = v; } return m; }
+      function objSum(a) { var s = 0; for (var k = 0; k < a.length; k++) s += (a[k].tier === 4 ? 0 : a[k].win); return s; }
+      var sc = groups.map(evalG);
+      // If the weakest party is already S-tier, the floor can't be meaningfully lifted and any sum gain is
+      // within sim noise — skip the (otherwise wasted) pairwise sweep. This is the common case at strong
+      // gear, where win% saturates; the pass earns its keep at marginal tiers with a genuinely weak party.
+      if (objMin(sc) >= WIN_BANDS.S) return;
+      var REBAL_EPS = 0.02, MAX_SWEEPS = 6;
+      for (var sweep = 0; sweep < MAX_SWEEPS; sweep++) {
+        var curMin = objMin(sc), curSum = objSum(sc), pick = null;
+        for (var gi = 0; gi < groups.length; gi++) {
+          for (var gj = gi + 1; gj < groups.length; gj++) {
+            var A = groups[gi], B = groups[gj], sA0 = slotsOf(A), sB0 = slotsOf(B);
+            for (var hi = 0; hi < A.hs.length; hi++) {
+              if (isTank(A.hs[hi].className)) continue;                       // keep exactly one tank per party
+              for (var hj = 0; hj < B.hs.length; hj++) {
+                if (isTank(B.hs[hj].className)) continue;
+                if (A.hs[hi].className === B.hs[hj].className) continue;
+                var sA = sA0.slice(); sA[hi] = B.hs[hj].className;
+                var sB = sB0.slice(); sB[hj] = A.hs[hi].className;
+                var ra = scoreOf(A.p, null, sA), rb = scoreOf(B.p, null, sB);
+                if (ra.tier === 4 || rb.tier === 4) continue;                 // would break a barrier (or bust the round cap) — never
+                var trial = sc.slice(); trial[gi] = ra; trial[gj] = rb;
+                var nMin = objMin(trial), nSum = objSum(trial);
+                var better = nMin > curMin + REBAL_EPS || (Math.abs(nMin - curMin) <= REBAL_EPS && nSum > curSum + REBAL_EPS);
+                if (!better) continue;
+                var gain = (nMin - curMin) * 1000 + (nSum - curSum);         // steepest: lifting the floor dominates the sum
+                if (!pick || gain > pick.gain) pick = { gi: gi, hi: hi, gj: gj, hj: hj, ra: ra, rb: rb, gain: gain };
+              }
+            }
+          }
+        }
+        if (!pick) break;                                                     // local optimum — done
+        var GA = groups[pick.gi], GB = groups[pick.gj];                       // apply: swap the two heroes' classes in place
+        var tmp = GA.hs[pick.hi].className; GA.hs[pick.hi].className = GB.hs[pick.hj].className; GB.hs[pick.hj].className = tmp;
+        sc[pick.gi] = pick.ra; sc[pick.gj] = pick.rb;
+      }
+    }
+
     // No active barriers → still try once (el=null) so parties get built (pure DPS/survival, no barrier req).
     var barrierChoices = state.barriers.length ? state.barriers : [null];
+    // Within a tier, the sim `win` is a better "stronger party" signal than raw ATK (it sees survival +
+    // conditionals), so it ranks just below breadth and above ATK. Without it the S-bucket collapses every
+    // ≥95% build to a tie and the choice falls to ATK — the "lots of 99–100%, but not the best" effect.
+    // EPS keeps it off the ~±2.6% sim noise.
+    var SELECT_WIN_EPS = 0.02;
     state.parties.forEach(function (p) {
       if (heroes.length >= state.maxRoster) return;
       var best = null;
@@ -474,15 +540,16 @@
         tanksByAtk.forEach(function (tankCn) {                                                   // try each tank — bulk/threat can beat raw ATK
           var slots = buildFor(p, el, tankCn);
           var sc = scoreOf(p, el, slots);
-          // Selection priority: tier → champion alignment → (breadth: least-used barrier) → ATK → margin.
-          // With breadth OFF (Max win) the least-used step is skipped, so ties go to highest ATK — the
-          // optimizer concentrates on the strongest barrier instead of spreading dark/light/earth.
+          // Selection priority: tier → champion alignment → (breadth: least-used barrier) → est. win% → ATK → margin.
+          // If an objective sets breadth OFF the least-used step is skipped and ties fall straight to win% then ATK;
+          // the shipped objectives (Balanced/Resilient) both keep breadth ON, so this stays guarded by BREADTH_ON.
           var use = elemCount[el] || 0, bestUse = best ? (elemCount[best.el] || 0) : Infinity;
           var better;
           if (!best) better = true;
           else if (sc.tier !== best.sc.tier) better = sc.tier < best.sc.tier;          // greener face wins
           else if (sc.align !== best.sc.align) better = sc.align > best.sc.align;       // align to champion element
           else if (BREADTH_ON && use !== bestUse) better = use < bestUse;               // even out barriers (breadth only)
+          else if (Math.abs(sc.win - best.sc.win) > SELECT_WIN_EPS) better = sc.win > best.sc.win; // genuinely stronger (sim), not just raw ATK
           else if (sc.atk !== best.sc.atk) better = sc.atk > best.sc.atk;               // faster kill
           else better = sc.bar > best.sc.bar;                                           // bigger barrier margin
           if (better) best = { slots: slots, sc: sc, el: el };
@@ -497,6 +564,7 @@
         counts[chosen[i]] = (counts[chosen[i]] || 0) + 1; // track for filter caps/min
       }
     });
+    rebalanceRoster(); // second pass: redistribute strength across parties (lift the weakest), barrier-safe
     state.heroes = heroes;
   }
   // Class-average effective ATK (crit-boosted) — the figure the build optimizes on.
@@ -1566,7 +1634,7 @@
       u[i] = { cn: s.cn, isChamp: s.isChamp, champName: s.champName, maxHp: s.maxHp, hp: s.maxHp,
         def: s.def, evaBase: s.evaBase, threat: s.threat, evaCap: s.evaCap, baseAtk: s.baseAtk,
         critChance: s.critChance, critMult: s.critMult, alive: true, consec: 0,
-        hemmaStack: 0, sensClean: true, sensCnt: 0, dodgedLast: false, dodgedThisRound: false,
+        hemmaStack: 0, sensClean: true, sensCnt: 0, dodgedThisRound: false,
         damagedThisRound: false,
         // Bishop survive-fatal is SELF-only (the individual Bishop). Lord's is the party-wide pool below.
         selfSave: !_simBare && !!(CLASS_SKILLS[s.cn] && CLASS_SKILLS[s.cn].surviveFatal), usedSelfSave: false };
@@ -1587,39 +1655,10 @@
     var lilu = !_simBare && opts.champName === "Lilu";
     var bossHp = MZE.bossHP, cap = MZE.roundCap;
     for (var r = 1; r <= cap; r++) {
-      // ---- party damage (alive units, with this round's conditional state) ----
-      var dmg = 0, procs = LOG ? [] : null, critN = 0;
-      for (var i = 0; i < n; i++) {
-        var x = u[i]; if (!x.alive) continue;
-        // Death Knight execute: if the boss is at ≤10% HP when the DK attacks, it's instantly defeated.
-        if (!_simBare && x.cn === "Death Knight" && (bossHp - dmg) <= MZE.bossHP * SIM.dk.executeFrac) {
-          LG(r, "win", lab(x) + " EXECUTES the boss (≤" + Math.round(SIM.dk.executeFrac * 100) + "% HP) — WIN");
-          return true;
-        }
-        var cc = x.critChance, cm = x.critMult, atkMul = 1, forced = false;
-        if (!_simBare) {
-          if (x.cn === "Jarl") { var t = jarlTier(x.hp / x.maxHp); if (t) { atkMul *= 1 + SIM.jarl.atkPerTier * t; if (LOG) procs.push(lab(x) + " rage×" + t); } }
-          else if (x.cn === "Sensei") { if (x.sensClean) { cc += SIM.sensei.crit; if (LOG) procs.push(lab(x) + " +crit (untouched)"); } }
-          else if (x.cn === "Daimyo") { if (r === 1) { forced = true; if (LOG) procs.push(lab(x) + " round-1 crit"); } }
-          else if (x.cn === "Acrobat") { if (x.dodgedLast) { forced = true; if (LOG) procs.push(lab(x) + " crit (post-dodge)"); } }
-          else if (x.cn === "Conquistador") { if (x.consec > 0) { cm += SIM.conq.perStack * Math.min(x.consec, SIM.conq.maxStacks); if (LOG) procs.push(lab(x) + " crit-stack×" + Math.min(x.consec, SIM.conq.maxStacks)); } }
-          if (rudo && r <= SIM.rudo.rounds) cc += SIM.rudo.crit;
-          if (x.isChamp && x.champName === "Hemma" && x.hemmaStack > 0) { atkMul *= 1 + SIM.hemma.atkPerStack * x.hemmaStack; if (LOG) procs.push(lab(x) + " ATK-stack×" + x.hemmaStack); }
-        }
-        var isCrit = forced || (rng() < Math.max(0, Math.min(1, cc / 100)));
-        if (isCrit) critN++;
-        dmg += x.baseAtk * atkMul * (isCrit ? cm : 1);
-        if (!_simBare && x.cn === "Conquistador") x.consec = isCrit ? x.consec + 1 : 0;
-      }
-      bossHp -= dmg;
-      if (LOG) {
-        if (rudo && r <= SIM.rudo.rounds) procs.unshift("Rudo +crit (party)");
-        LG(r, "dmg", "Party deals " + num(dmg) + (critN ? " (" + critN + " crit" + (critN > 1 ? "s" : "") + ")" : "") +
-          " → Boss " + num(Math.max(0, bossHp)) + " (" + Math.max(0, Math.round(bossHp / MZE.bossHP * 100)) + "%)" +
-          (procs.length ? " · " + procs.join(", ") : ""));
-      }
-      if (bossHp <= 0) { LG(r, "win", "Boss defeated — WIN (round " + r + ")"); return true; }
-      // ---- boss attacks ----
+      // ---- boss attacks FIRST (boss-first ordering, confirmed against the live game) ----
+      // The boss strikes before the party deals damage each round, so a unit the boss kills this round
+      // contributes NO damage that round — about-to-die units are removed before they can act. Round 1
+      // is the boss's opening volley.
       var totT = 0, aliveCnt = 0;
       for (var i = 0; i < n; i++) { u[i].dodgedThisRound = false; u[i].damagedThisRound = false; if (u[i].alive) { totT += Number(u[i].threat) || 0; aliveCnt++; } }
       if (!aliveCnt) { LG(r, "loss", "Party wiped — LOSS (round " + r + ")"); return false; }
@@ -1640,13 +1679,53 @@
         if (LOG) LG(r, "aoe", "Boss AoE → " + (aoeParts ? aoeParts.join(" · ") : ""));
       }
       // deaths — a Bishop spends its OWN survive-fatal first; otherwise a Lord's party-wide save covers
-      // the ally; else the unit dies. Each save revives to 1 HP, once.
+      // the ally; else the unit dies. Each save revives to 1 HP, once. Resolved BEFORE party damage so a
+      // killed unit can't deal its share this round (the whole point of boss-first).
       for (var i = 0; i < n; i++) { var x = u[i]; if (x.alive && x.hp <= 0) {
         if (x.selfSave && !x.usedSelfSave) { x.usedSelfSave = true; x.hp = 1; LG(r, "save", lab(x) + " survives a fatal blow → 1 HP"); }
         else if (allySaves > 0) { allySaves--; x.hp = 1; LG(r, "save", lab(x) + " shielded by a Lord → 1 HP"); }
         else { x.alive = false; LG(r, "death", lab(x) + " is defeated"); }
       } }
-      // ---- end-of-round upkeep (healing, Hemma drain, Sensei/Acrobat state) ----
+      // Sensei loses "+crit/+eva until damaged" the instant it's hit — now BEFORE it attacks, since the
+      // boss strikes first (the opening volley can knock it out of its untouched state). The "regain after
+      // N clean rounds" half stays in end-of-round upkeep below.
+      if (!_simBare) for (var i = 0; i < n; i++) { var x = u[i]; if (x.alive && x.cn === "Sensei" && x.damagedThisRound) { x.sensClean = false; x.sensCnt = 0; } }
+
+      // ---- party damage (alive units, with this round's conditional state) ----
+      var dmg = 0, procs = LOG ? [] : null, critN = 0;
+      for (var i = 0; i < n; i++) {
+        var x = u[i]; if (!x.alive) continue;
+        // Death Knight execute: if the boss is at ≤10% HP when the DK attacks, it's instantly defeated.
+        if (!_simBare && x.cn === "Death Knight" && (bossHp - dmg) <= MZE.bossHP * SIM.dk.executeFrac) {
+          LG(r, "win", lab(x) + " EXECUTES the boss (≤" + Math.round(SIM.dk.executeFrac * 100) + "% HP) — WIN");
+          return true;
+        }
+        var cc = x.critChance, cm = x.critMult, atkMul = 1, forced = false;
+        if (!_simBare) {
+          if (x.cn === "Jarl") { var t = jarlTier(x.hp / x.maxHp); if (t) { atkMul *= 1 + SIM.jarl.atkPerTier * t; if (LOG) procs.push(lab(x) + " rage×" + t); } }
+          else if (x.cn === "Sensei") { if (x.sensClean) { cc += SIM.sensei.crit; if (LOG) procs.push(lab(x) + " +crit (untouched)"); } }
+          else if (x.cn === "Daimyo") { if (r === 1) { forced = true; if (LOG) procs.push(lab(x) + " round-1 crit"); } }
+          // Acrobat: guaranteed crit after dodging. Boss-first means the dodge already happened THIS round
+          // (boss phase above), so the reward lands on this round's attack → read dodgedThisRound.
+          else if (x.cn === "Acrobat") { if (x.dodgedThisRound) { forced = true; if (LOG) procs.push(lab(x) + " crit (post-dodge)"); } }
+          else if (x.cn === "Conquistador") { if (x.consec > 0) { cm += SIM.conq.perStack * Math.min(x.consec, SIM.conq.maxStacks); if (LOG) procs.push(lab(x) + " crit-stack×" + Math.min(x.consec, SIM.conq.maxStacks)); } }
+          if (rudo && r <= SIM.rudo.rounds) cc += SIM.rudo.crit;
+          if (x.isChamp && x.champName === "Hemma" && x.hemmaStack > 0) { atkMul *= 1 + SIM.hemma.atkPerStack * x.hemmaStack; if (LOG) procs.push(lab(x) + " ATK-stack×" + x.hemmaStack); }
+        }
+        var isCrit = forced || (rng() < Math.max(0, Math.min(1, cc / 100)));
+        if (isCrit) critN++;
+        dmg += x.baseAtk * atkMul * (isCrit ? cm : 1);
+        if (!_simBare && x.cn === "Conquistador") x.consec = isCrit ? x.consec + 1 : 0;
+      }
+      bossHp -= dmg;
+      if (LOG) {
+        if (rudo && r <= SIM.rudo.rounds) procs.unshift("Rudo +crit (party)");
+        LG(r, "dmg", "Party deals " + num(dmg) + (critN ? " (" + critN + " crit" + (critN > 1 ? "s" : "") + ")" : "") +
+          " → Boss " + num(Math.max(0, bossHp)) + " (" + Math.max(0, Math.round(bossHp / MZE.bossHP * 100)) + "%)" +
+          (procs.length ? " · " + procs.join(", ") : ""));
+      }
+      if (bossHp <= 0) { LG(r, "win", "Boss defeated — WIN (round " + r + ")"); return true; }
+      // ---- end-of-round upkeep (healing, Hemma drain, Sensei regain) ----
       if (!_simBare) {
         for (var i = 0; i < n; i++) { var x = u[i]; if (!x.alive) continue;
           if (lilu) x.hp = Math.min(x.maxHp, x.hp + SIM.lilu.heal);
@@ -1661,10 +1740,10 @@
             hemma.hp = Math.min(hemma.maxHp, hemma.hp + drain); if (hemma.hemmaStack < SIM.hemma.maxStacks) hemma.hemmaStack++;
             LG(r, "heal", lab(hemma) + " drains " + lab(victim) + " (" + num(drain) + " HP) → self-heal + ATK stack"); }
         }
+        // Sensei regains its untouched buff after N clean (undamaged) rounds. The "lost when damaged"
+        // half ran above, before the party attacked.
         for (var i = 0; i < n; i++) { var x = u[i]; if (!x.alive) continue;
-          if (x.cn === "Sensei") { if (x.damagedThisRound) { x.sensClean = false; x.sensCnt = 0; }
-            else if (!x.sensClean) { x.sensCnt++; if (x.sensCnt >= SIM.sensei.regainRounds) x.sensClean = true; } }
-          x.dodgedLast = x.dodgedThisRound;
+          if (x.cn === "Sensei" && !x.damagedThisRound && !x.sensClean) { x.sensCnt++; if (x.sensCnt >= SIM.sensei.regainRounds) x.sensClean = true; }
         }
       }
     }
@@ -2332,7 +2411,8 @@
     var barrierSection = POWER_HEADER + 'Prioritize elements (barriers)</div>' +
       '<p class="text-xs text-textSecondary leading-relaxed mb-1">Check the elemental barriers this zone uses. Each party must break <b>one</b> of them (≥ ' + BARRIER_POWER_TARGET + ' power). Default: dark / light / earth (T16 MZE). Unchecking all removes the barrier requirement.</p>' +
       '<div class="flex flex-wrap gap-2 mb-4">' + barrierChips + '</div>';
-    // Roster Objective: how Recommended optimizes (meta concentration ↔ resilient spread).
+    // Roster Objective: how Recommended optimizes (balanced ↔ resilient spread).
+    if (!OBJECTIVES[state.objective]) state.objective = DEFAULT_OBJECTIVE; // normalize retired values (e.g. old "maxwin" saves)
     var objBtns = Object.keys(OBJECTIVES).map(function (k) {
       var o = OBJECTIVES[k], on = state.objective === k;
       return '<button type="button" data-objective="' + k + '" title="' + escA(o.desc) + '" class="flex-1 px-2 py-1.5 rounded-lg border-2 text-sm font-semibold ' +
