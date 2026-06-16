@@ -2273,7 +2273,7 @@
     }
     return mergeTier(state.quality, obj);
   }
-  function applyClassCSV(text) { return parseClassTable(text, ","); }
+  function applyClassCSV(text, sep) { return parseClassTable(text, sep || ","); }
   // Shared parser for the CSV upload (comma) and the in-panel paste box (tab, Excel).
   // Header-aware: if the first non-empty row's first cell is "class", its column names map the
   // data in ANY order — recognizes an optional Quality / gear-quality column plus synonyms
@@ -2331,6 +2331,64 @@
     }
     return count;
   }
+  // Roster CSV (per-hero) importer — the counterpart to rosterCSVStr's export, so a downloaded roster
+  // CSV round-trips back in. Header-aware (Name, Class, Party, Power, HP, ATK, DEF, EVA, CRIT, THREAT in
+  // any order). REPLACES the roster: each row → a hero of the matched class, its CSV stats kept as
+  // overrides, assigned to the EXISTING party whose name matches the Party cell (parties + their
+  // champions are left intact); "Bench"/blank/no-match → bench. Class names match case- and
+  // punctuation-insensitively, so "Arch-Druid" lands on "Arch Druid". Returns { matched, skipped }, or
+  // null if it isn't a roster CSV (no Class column).
+  function applyRosterCSV(text, sep) {
+    sep = sep || ",";
+    var rows = (text || "").split(/\r?\n/).filter(function (l) { return l.trim() !== ""; });
+    if (!rows.length) return null;
+    var col = {};
+    rows[0].split(sep).forEach(function (cell, i) {
+      var n = String(cell).trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (n === "name" || n === "hero") col.name = i;
+      else if (n === "class" || n === "classname") col.className = i;
+      else if (n === "party") col.party = i;
+      else if (n === "power" || n === "element") col.power = i;
+      else if (n === "hp" || n === "health") col.hp = i;
+      else if (n === "atk" || n === "attack") col.atk = i;
+      else if (n === "def" || n === "defense" || n === "defence") col.def = i;
+      else if (n === "eva" || n === "evasion") col.eva = i;
+      else if (n === "crit" || n === "critchance" || n === "critrate") col.crit = i;
+      else if (n === "threat") col.threat = i;
+    });
+    if (col.className === undefined) return null; // not a roster CSV — let the class-defaults parser try
+    var norm = function (s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]/g, ""); };
+    var partyByName = {};
+    state.parties.forEach(function (p) { partyByName[String(p.name || "").trim().toLowerCase()] = p.id; });
+    var classByNorm = {};
+    CATALOG.forEach(function (c) { classByNorm[norm(c.name)] = c.name; });
+    var statKeys = ["power", "hp", "atk", "def", "eva", "crit", "threat"];
+    var heroes = [], id = 1, matched = 0, skipped = 0;
+    for (var r = 1; r < rows.length; r++) {
+      var parts = rows[r].split(sep);
+      var cn = classByNorm[norm(parts[col.className])];
+      if (!cn) { skipped++; continue; } // unknown class name
+      var pid = null;
+      if (col.party !== undefined) {
+        var pl = String(parts[col.party] || "").trim().toLowerCase();
+        if (pl && pl !== "bench" && partyByName[pl] !== undefined) pid = partyByName[pl];
+      }
+      var h = { id: id++, name: col.name !== undefined ? String(parts[col.name] || "").trim() : "",
+        className: cn, partyId: pid, roleOverride: null,
+        power: null, hp: null, atk: null, def: null, eva: null, crit: null, threat: null };
+      statKeys.forEach(function (k) {
+        if (col[k] === undefined) return;
+        var v = parts[col[k]];
+        if (v !== undefined && String(v).trim() !== "") h[k] = statNum(v);
+      });
+      heroes.push(h); matched++;
+    }
+    if (!matched) return { matched: 0, skipped: skipped };
+    state.heroes = heroes;
+    state.parties.forEach(function (p) { enforcePartyCap(p.id); }); // bump any party over its cap to the bench
+    return { matched: matched, skipped: skipped };
+  }
+
   var uploadPanel = document.getElementById("uploadPanel");
   var uploadBackdrop = document.getElementById("uploadBackdrop");
   var uploadText = document.getElementById("uploadText");
@@ -2363,7 +2421,23 @@
       }
       return;
     }
-    var n = applyClassCSV(text); setUpdate("Uploaded default-stats CSV (" + n + " classes)."); render();
+    // CSV / TSV. Excel copy-paste is TAB-separated, a saved file is comma-separated — detect which from
+    // the first line (a tab in the header → Excel paste). A roster (per-hero) table has both Name and
+    // Class columns; a class-defaults table has Class as its leading name column and no separate Name.
+    var firstLine = text.split(/\r?\n/)[0] || "";
+    var sep = /\t/.test(firstLine) ? "\t" : ",";
+    var hdr = firstLine.split(sep).map(function (c) { return c.trim().toLowerCase(); });
+    if (hdr.indexOf("name") >= 0 && hdr.indexOf("class") >= 0) {
+      var rr = applyRosterCSV(text, sep);
+      if (rr && rr.matched) {
+        setUpdate("Uploaded roster (" + rr.matched + " heroes" + (rr.skipped ? ", " + rr.skipped + " skipped" : "") + ")."); render();
+        flashStatus(uploadStatus, rr.matched + " hero" + (rr.matched === 1 ? "" : "es") + " loaded" + (rr.skipped ? " (" + rr.skipped + " skipped)" : "") + " ✓", 3500);
+      } else {
+        flashStatus(uploadStatus, "No matching classes in roster", 3000);
+      }
+      return;
+    }
+    var n = applyClassCSV(text, sep); setUpdate("Uploaded default stats (" + n + " classes)."); render();
     flashStatus(uploadStatus, n ? n + " class" + (n === 1 ? "" : "es") + " updated ✓" : "No matching classes in CSV", 3000);
   }
   var openUploadBtn = document.getElementById("openUploadBtn");

@@ -202,7 +202,7 @@
     <header class="flex items-center justify-between p-4 border-b border-borderc shrink-0">
       <div class="min-w-0">
         <h2 class="text-base font-semibold text-textPrimary">Upload Data</h2>
-        <p class="text-xs text-textSecondary mt-0.5">Paste JSON/CSV or choose a file. Roster, Default Stats, or All are auto-detected.</p>
+        <p class="text-xs text-textSecondary mt-0.5">Paste JSON/CSV (or copy straight from Excel/Sheets), or choose a file. Roster, Default Stats, or All are auto-detected.</p>
       </div>
       <button id="uploadClose" class="btn-white shrink-0" aria-label="Close">Close</button>
     </header>
@@ -211,7 +211,7 @@
         class="text-xs text-textSecondary file:btn-white file:mr-2 file:cursor-pointer">
       <textarea id="uploadText" spellcheck="false"
         class="w-full flex-1 min-h-[260px] p-3 rounded-xl bg-hoverBg border border-borderc text-textPrimary font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent"
-        placeholder="Paste JSON or CSV here…"></textarea>
+        placeholder="Paste JSON, CSV, or a copied spreadsheet range here…"></textarea>
       <div class="flex flex-wrap items-center gap-2 shrink-0">
         <button id="uploadApplyBtn" class="btn-primary">Load Data</button>
         <span id="uploadStatus" class="text-xs text-textSecondary"></span>
