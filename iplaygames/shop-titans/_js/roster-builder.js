@@ -830,6 +830,26 @@
     }).join("");
     return out ? '<span class="flex items-center gap-0.5 shrink-0">' + out + '</span>' : '';
   }
+  // True when a hero is overall WORSE than its class default (the active-tier averages in the Default
+  // Stats panel) — i.e. weaker on BOTH axes that matter: crit-folded effective ATK AND survivability
+  // (hits-to-die credited by dodge, so it folds HP + DEF + EVA). Requiring both avoids flagging a strong
+  // specialist (e.g. a high-ATK glass nuker isn't "lower" just because its HP is below default). An
+  // inheriting hero equals the default on both → never flagged; only a genuinely under-geared one trips it.
+  function belowClassDefault(h) {
+    var cn = h.className, cap = evaCapOf(cn);
+    function offense(atk, crit) { return effAtkOf(atk, crit, critMultOf(cn)); }
+    function survival(hp, def, eva) { var s = survStats(hp, def, eva, cap); return s.hitsToDie / Math.max(0.1, 1 - s.dodge); }
+    var hAtk = offense(heroStat(h, "atk"), heroStat(h, "crit"));
+    var dAtk = offense(classAvg(cn, "atk"), classAvg(cn, "crit"));
+    var hSurv = survival(heroStat(h, "hp"), heroStat(h, "def"), heroStat(h, "eva"));
+    var dSurv = survival(classAvg(cn, "hp"), classAvg(cn, "def"), classAvg(cn, "eva"));
+    return hAtk < dAtk * 0.999 && hSurv < dSurv * 0.999;
+  }
+  function belowDefaultMark(h) {
+    if (!belowClassDefault(h)) return "";
+    return '<span class="shrink-0 font-bold leading-none" style="color:' + COL.rose + '" ' +
+      'title="Overall stats are below the ' + escA(state.quality) + ' ' + escA(h.className) + ' default (Default Stats panel)">−</span>';
+  }
 
   var FIELD = "bg-surface border border-borderc rounded-lg text-textPrimary px-2 py-1.5 outline-none text-sm focus:border-accent";
   var GHOST_X = "bg-transparent border-none text-textSecondary hover:text-textPrimary cursor-pointer text-base leading-none";
@@ -887,7 +907,7 @@
     for (var i = 0; i < cap; i++) {
       var h = r.members[i];
       if (!h) { slots += '<div class="text-xs text-textSecondary italic py-1 pl-1">empty slot</div>'; continue; }
-      var slotLabel = (h.name ? escH(h.name) + ' ' : '') +
+      var slotLabel = (h.name ? escH(h.name) + ' ' : '') + belowDefaultMark(h) + ' ' +
         '<span class="text-textSecondary">(' + escH(h.className) + ')</span>';
       slots += '<div class="flex items-center gap-2 py-1">' + classIcon(h.className) + barrierIcon(elOf(h.className)) +
         '<span class="flex-1 text-sm">' + slotLabel + '</span>' +
