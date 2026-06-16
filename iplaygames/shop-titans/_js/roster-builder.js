@@ -955,7 +955,7 @@
     var updateBar = '<div class="bg-surface border-2 border-borderc rounded-lg px-3 py-1.5 flex items-center gap-2 text-xs">' +
       '<span class="font-semibold uppercase tracking-wider text-[10px] text-textSecondary shrink-0">Latest</span>' +
       '<span class="flex-1 min-w-0 truncate ' + (lastUpdate ? "text-textPrimary" : "text-textSecondary italic") + '">' +
-        escH(lastUpdate || "No changes yet — sort, fill, or edit your roster to see updates here.") + '</span></div>';
+        escH(lastUpdate || "All Default heroes are pre-populated with assumed T15 BIS gear/skills.  Zone is set to T16 (Meteor Zone).") + '</span></div>';
     return '' +
       '<div class="grid grid-cols-1 lg:grid-cols-[76fr_24fr] gap-4 items-start">' +
         '<div>' + viewRoster() + '</div>' + autoSortCol +
