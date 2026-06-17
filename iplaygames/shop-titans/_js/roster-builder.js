@@ -204,7 +204,7 @@
     var max = 0;
     state.heroes.forEach(function (h) { if (h.id > max) max = h.id; });
     // null stats = inherit the class average until overridden
-    state.heroes.push({ id: max + 1, name: "", className: className || CATALOG[0].name, partyId: null, roleOverride: null, power: null, hp: null, atk: null, def: null, eva: null, crit: null, threat: null });
+    state.heroes.push({ id: max + 1, name: "", className: className || CATALOG[0].name, partyId: null, roleOverride: null, power: null, hp: null, atk: null, def: null, eva: null, crit: null, threat: null, critDmg: null });
   }
   function delHero(id) { state.heroes = state.heroes.filter(function (h) { return h.id !== id; }); }
 
@@ -375,7 +375,7 @@
 
     function mk(className, partyId) {
       if (heroes.length >= state.maxRoster) return false;
-      heroes.push({ id: id++, name: "", className: className, partyId: partyId, roleOverride: null, power: null, hp: null, atk: null, def: null, eva: null, crit: null, threat: null });
+      heroes.push({ id: id++, name: "", className: className, partyId: partyId, roleOverride: null, power: null, hp: null, atk: null, def: null, eva: null, crit: null, threat: null, critDmg: null });
       return true;
     }
 
@@ -602,7 +602,7 @@
       }),
       heroes: state.heroes.map(function (h) {
         return { id: h.id, name: h.name, className: h.className, partyId: h.partyId, roleOverride: h.roleOverride || null,
-          power: statOut(h.power), hp: statOut(h.hp), atk: statOut(h.atk), def: statOut(h.def), eva: statOut(h.eva), crit: statOut(h.crit), threat: statOut(h.threat) };
+          power: statOut(h.power), hp: statOut(h.hp), atk: statOut(h.atk), def: statOut(h.def), eva: statOut(h.eva), crit: statOut(h.crit), threat: statOut(h.threat), critDmg: statOut(h.critDmg) };
       })
     }, null, 2);
   }
@@ -687,7 +687,7 @@
         className: h.className ? String(h.className) : CATALOG[0].name,
         partyId: h.partyId == null ? null : Number(h.partyId),
         roleOverride: (h.roleOverride === "tank" || h.roleOverride === "dps") ? h.roleOverride : null,
-        power: statOut(h.power), hp: statOut(h.hp), atk: statOut(h.atk), def: statOut(h.def), eva: statOut(h.eva), crit: statOut(h.crit), threat: statOut(h.threat)
+        power: statOut(h.power), hp: statOut(h.hp), atk: statOut(h.atk), def: statOut(h.def), eva: statOut(h.eva), crit: statOut(h.crit), threat: statOut(h.threat), critDmg: statOut(h.critDmg)
       };
     });
   }
@@ -837,10 +837,9 @@
   // inheriting hero equals the default on both → never flagged; only a genuinely under-geared one trips it.
   function belowClassDefault(h) {
     var cn = h.className, cap = evaCapOf(cn);
-    function offense(atk, crit) { return effAtkOf(atk, crit, critMultOf(cn)); }
     function survival(hp, def, eva) { var s = survStats(hp, def, eva, cap); return s.hitsToDie / Math.max(0.1, 1 - s.dodge); }
-    var hAtk = offense(heroStat(h, "atk"), heroStat(h, "crit"));
-    var dAtk = offense(classAvg(cn, "atk"), classAvg(cn, "crit"));
+    var hAtk = effAtkOf(heroStat(h, "atk"), heroStat(h, "crit"), heroCritMult(h));     // hero uses its own crit dmg
+    var dAtk = effAtkOf(classAvg(cn, "atk"), classAvg(cn, "crit"), critMultOf(cn));     // default uses the class crit dmg
     var hSurv = survival(heroStat(h, "hp"), heroStat(h, "def"), heroStat(h, "eva"));
     var dSurv = survival(classAvg(cn, "hp"), classAvg(cn, "def"), classAvg(cn, "eva"));
     return hAtk < dAtk * 0.999 && hSurv < dSurv * 0.999;
@@ -1436,6 +1435,7 @@
   // Class-skill lookups (foldable parts only — see CLASS_SKILLS).
   function classSkill(cn) { return CLASS_SKILLS[cn] || null; }
   function critMultOf(cn) { var cd = classAvg(cn, "critDmg"); return cd > 0 ? cd : MZE.critDmgMod; } // per-class crit-damage multiplier (data)
+  function heroCritMult(h) { var cd = heroStat(h, "critDmg"); return cd > 0 ? cd : MZE.critDmgMod; } // per-hero crit damage: override if set, else the class default
   function evaCapOf(cn) { var s = CLASS_SKILLS[cn]; return s && s.evaCap ? s.evaCap : MZE.evaCapDefault; }
   function classSaves(cn) { var s = CLASS_SKILLS[cn]; return (s && (s.protectAlly || s.surviveFatal)) ? 1 : 0; }
 
@@ -1557,7 +1557,7 @@
   function partyUnits(hs, champ, buff) {
     buff = buff || partyBuff(null, []);
     var units = hs.map(function (h) {
-      return { hp: heroStat(h, "hp") * buff.hpMult, def: heroStat(h, "def") * buff.defMult, eva: heroStat(h, "eva") + buff.evaAdd, threat: heroStat(h, "threat"), evaCap: evaCapOf(h.className), atk: buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), critMultOf(h.className), buff) };
+      return { hp: heroStat(h, "hp") * buff.hpMult, def: heroStat(h, "def") * buff.defMult, eva: heroStat(h, "eva") + buff.evaAdd, threat: heroStat(h, "threat"), evaCap: evaCapOf(h.className), atk: buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), heroCritMult(h), buff) };
     });
     if (champ) units.push({ hp: (Number(champ.hp) || 0) * buff.hpMult, def: (Number(champ.def) || 0) * buff.defMult, eva: (Number(champ.eva) || 0) + buff.evaAdd, threat: Number(champ.threat) || 0, evaCap: MZE.evaCapDefault, atk: buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) });
     return units;
@@ -1600,7 +1600,7 @@
         heroStat(h, "hp") * buff.hpMult, heroStat(h, "def") * buff.defMult,
         heroStat(h, "eva") + buff.evaAdd, heroStat(h, "threat"), evaCapOf(h.className),
         (Number(heroStat(h, "atk")) || 0) * buff.atkMult, heroStat(h, "crit") + buff.critAdd,
-        critMultOf(h.className) + buff.critDmgAdd);
+        heroCritMult(h) + buff.critDmgAdd);
     });
     if (champ) units.push(simUnitFromStats(null, true, champ.name,
       (Number(champ.hp) || 0) * buff.hpMult, (Number(champ.def) || 0) * buff.defMult,
@@ -1784,7 +1784,7 @@
   function partySig(hs, champ, saves) {
     var hero = hs.map(function (h) {
       return h.className + "," + heroStat(h, "hp") + "," + heroStat(h, "atk") + "," + heroStat(h, "def") +
-        "," + heroStat(h, "eva") + "," + heroStat(h, "crit") + "," + heroStat(h, "threat");
+        "," + heroStat(h, "eva") + "," + heroStat(h, "crit") + "," + heroStat(h, "threat") + "," + heroStat(h, "critDmg");
     }).join(";");
     var ch = champ ? [champ.name, champ.hp, champ.atk, champ.def, champ.eva, champ.crit, champ.threat].join(",") : "";
     return "sim2|" + state.quality + "|" + saves + "|" + hero + "|" + ch;
@@ -1802,7 +1802,7 @@
     var hs = state.heroes.filter(function (h) { return h.partyId === p.id; });
     var champ = getChampion(p.champName);
     var buff = partyBuff(champ, hs.map(function (h) { return h.className; }));
-    var atk = hs.reduce(function (a, h) { return a + buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), critMultOf(h.className), buff); }, 0) +
+    var atk = hs.reduce(function (a, h) { return a + buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), heroCritMult(h), buff); }, 0) +
       (champ ? buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) : 0);
     var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : Infinity;
     if (hs.length !== partyCap(p)) return { grade: "D", winPct: 0, fail: true, reason: "undermanned", rounds: rounds };
@@ -1873,7 +1873,7 @@
         stats = parts;
       }
       if (!hero) return;
-      ["hp", "atk", "def", "eva", "power", "crit", "threat"].forEach(function (key, i) {
+      ["hp", "atk", "def", "eva", "power", "crit", "threat", "critDmg"].forEach(function (key, i) {
         if (stats[i] !== undefined && String(stats[i]).trim() !== "") hero[key] = statNum(stats[i]);
       });
       count++;
@@ -1963,8 +1963,8 @@
 
     // ---- Section B: per-hero overrides + survivability ----
     var heroPaste = '<div class="space-y-2">' +
-      '<div class="text-xs text-textSecondary leading-relaxed">Per-hero <b>overrides</b> — leave a cell blank to inherit the class average (the faint number). Paste: <b>HP&nbsp; ATK&nbsp; DEF&nbsp; EVA&nbsp; Element&nbsp; CRIT&nbsp; THREAT</b> (optional leading <b>Name</b>).</div>' +
-      '<textarea id="statsPaste" spellcheck="false" class="w-full h-16 p-2 rounded-lg bg-hoverBg border border-borderc text-textPrimary font-mono text-xs resize-y focus:outline-none focus:ring-1 focus:ring-accent" placeholder="SHADE&#9;4284&#9;12144&#9;47648&#9;0&#9;215&#9;25&#9;100"></textarea>' +
+      '<div class="text-xs text-textSecondary leading-relaxed">Per-hero <b>overrides</b> — leave a cell blank to inherit the class average (the faint number). Paste: <b>HP&nbsp; ATK&nbsp; DEF&nbsp; EVA&nbsp; Element&nbsp; CRIT&nbsp; THREAT&nbsp; CritDmg</b> (optional leading <b>Name</b>).</div>' +
+      '<textarea id="statsPaste" spellcheck="false" class="w-full h-16 p-2 rounded-lg bg-hoverBg border border-borderc text-textPrimary font-mono text-xs resize-y focus:outline-none focus:ring-1 focus:ring-accent" placeholder="SHADE&#9;4284&#9;12144&#9;47648&#9;0&#9;215&#9;25&#9;100&#9;4.5"></textarea>' +
       '<div class="flex items-center gap-2"><button id="statsPasteApply" class="btn-white text-xs px-3 py-1">Apply Hero Paste</button><span id="statsPasteStatus" class="text-xs text-textSecondary"></span></div>' +
     '</div>';
     var heroHeader = state.heroes.length ? '<div class="flex items-center gap-2 px-3 text-[10px] uppercase tracking-wider text-textSecondary">' +
@@ -1972,13 +1972,13 @@
       '<span class="w-14 text-center shrink-0">HP</span><span class="w-16 text-center shrink-0">ATK</span>' +
       '<span class="w-16 text-center shrink-0">DEF</span><span class="w-12 text-center shrink-0">EVA</span>' +
       '<span class="w-16 text-center shrink-0">Element</span><span class="w-12 text-center shrink-0">CRIT</span>' +
-      '<span class="w-14 text-center shrink-0">THREAT</span></div>' : "";
+      '<span class="w-14 text-center shrink-0">THREAT</span><span class="w-14 text-center shrink-0">CRIT✕</span></div>' : "";
     var heroRows = state.heroes.length ? state.heroes.map(function (h) {
       return '<div class="flex items-center gap-2 bg-surface border-2 border-borderc rounded-lg px-3 py-1.5">' +
         classIcon(h.className) + '<span class="flex-1 min-w-0 truncate text-sm">' + escH(h.name || h.className) + '</span>' +
         overrideField(h, "hp", "w-14") + overrideField(h, "atk", "w-16") + overrideField(h, "def", "w-16") +
         overrideField(h, "eva", "w-12") + overrideField(h, "power", "w-16") +
-        overrideField(h, "crit", "w-12") + overrideField(h, "threat", "w-14") + '</div>';
+        overrideField(h, "crit", "w-12") + overrideField(h, "threat", "w-14") + overrideField(h, "critDmg", "w-14") + '</div>';
     }).join("") : '<div class="text-xs text-textSecondary italic">No heroes yet.</div>';
 
     var champHeader = '<div class="flex items-center gap-2 px-3 text-[10px] uppercase tracking-wider text-textSecondary">' +
@@ -2227,8 +2227,8 @@
     return lines.join("\n");
   }
   function rosterCSVStr() {
-    var keys = ["power", "hp", "atk", "def", "eva", "crit", "threat"]; // per-hero stored values (blank = inherits class avg)
-    var lines = ["Name,Class,Party,Power,HP,ATK,DEF,EVA,CRIT,THREAT"];
+    var keys = ["power", "hp", "atk", "def", "eva", "crit", "threat", "critDmg"]; // per-hero stored values (blank = inherits class avg)
+    var lines = ["Name,Class,Party,Power,HP,ATK,DEF,EVA,CRIT,THREAT,CritDmg"];
     state.heroes.forEach(function (h) {
       var row = [csvCell(h.name || ""), csvCell(h.className), csvCell(h.partyId ? partyLabel(h.partyId) : "Bench")];
       keys.forEach(function (k) { var v = h[k]; row.push((v === null || v === undefined || v === "") ? "" : v); });
@@ -2375,6 +2375,7 @@
       else if (n === "eva" || n === "evasion") col.eva = i;
       else if (n === "crit" || n === "critchance" || n === "critrate") col.crit = i;
       else if (n === "threat") col.threat = i;
+      else if (n === "critdmg" || n === "critdamage" || n === "critx") col.critDmg = i;
     });
     if (col.className === undefined) return null; // not a roster CSV — let the class-defaults parser try
     var norm = function (s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]/g, ""); };
@@ -2382,7 +2383,7 @@
     state.parties.forEach(function (p) { partyByName[String(p.name || "").trim().toLowerCase()] = p.id; });
     var classByNorm = {};
     CATALOG.forEach(function (c) { classByNorm[norm(c.name)] = c.name; });
-    var statKeys = ["power", "hp", "atk", "def", "eva", "crit", "threat"];
+    var statKeys = ["power", "hp", "atk", "def", "eva", "crit", "threat", "critDmg"];
     var heroes = [], id = 1, matched = 0, skipped = 0;
     for (var r = 1; r < rows.length; r++) {
       var parts = rows[r].split(sep);
@@ -2395,7 +2396,7 @@
       }
       var h = { id: id++, name: col.name !== undefined ? String(parts[col.name] || "").trim() : "",
         className: cn, partyId: pid, roleOverride: null,
-        power: null, hp: null, atk: null, def: null, eva: null, crit: null, threat: null };
+        power: null, hp: null, atk: null, def: null, eva: null, crit: null, threat: null, critDmg: null };
       statKeys.forEach(function (k) {
         if (col[k] === undefined) return;
         var v = parts[col[k]];
@@ -2667,7 +2668,7 @@
     var champ = getChampion(p.champName);
     var buff = partyBuff(champ, hs.map(function (h) { return h.className; }));
     if (state.barriers.length && partyBestBarrier(p, hs) * buff.barrierMult < BARRIER_POWER_TARGET) return 0;
-    var atk = hs.reduce(function (a, h) { return a + buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), critMultOf(h.className), buff); }, 0) +
+    var atk = hs.reduce(function (a, h) { return a + buffedEffAtk(heroStat(h, "atk"), heroStat(h, "crit"), heroCritMult(h), buff); }, 0) +
       (champ ? buffedEffAtk(Number(champ.atk) || 0, Number(champ.crit) || 0, MZE.critDmgMod, buff) : 0);
     var rounds = atk > 0 ? Math.ceil(MZE.bossHP / atk) : Infinity;
     if (rounds >= MZE.roundCap) return 0;
