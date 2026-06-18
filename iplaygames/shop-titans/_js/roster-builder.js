@@ -65,7 +65,10 @@
   ];
   var CLASS = {};
   CATALOG.forEach(function (c) { CLASS[c.name] = c; });
-  function isTank(cn) { return (CLASS[cn] && CLASS[cn].role || "").indexOf("Tank") >= 0; }
+  // Tank = a high-THREAT class (its class-average threat clears the cutoff), not the hand-set role tag.
+  // 75 matches the threat ≥ 75 "Tank" stat badge, so a class that shows that badge IS treated as a tank.
+  // Currently this is the 7 Fighters plus Praetorian (threat 80, the reworked high-DEF/dodge wall).
+  function isTank(cn) { return classAvg(cn, "threat") >= 75; }
   function elOf(cn) { return CLASS[cn] ? CLASS[cn].element : "none"; }
 
   // Per-class skills. Foldable fields feed the grade now; `sim`-flagged effects are
