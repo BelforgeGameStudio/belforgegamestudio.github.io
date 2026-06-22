@@ -901,7 +901,7 @@
       var col = b.barrier
         ? (!b.ok ? COL.rose : (b.power > 0 ? COL.emerald : COL.amber))
         : (b.power > 0 ? EL_COLOR[b.el] : COL.muted);
-      return '<span class="inline-flex items-center gap-0.5 text-xs font-mono" title="' + b.el + ' power" style="color:' + col + '">' + barrierIcon(b.el, "w-4 h-4") + " " + b.power + '</span>';
+      return '<span class="inline-flex items-center gap-0.5 text-xs font-mono" title="' + b.el + ' power" style="color:' + col + '">' + barrierIcon(b.el, "w-4 h-4") + " " + Math.floor(b.power) + '</span>';
     }).join("");
 
     var slots = "";
