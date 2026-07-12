@@ -267,6 +267,10 @@
     var counts = {}; // running roster class counts (for filter caps/min as the build commits)
     // Roster Objective knobs (Balanced / Resilient) — see OBJECTIVES.
     var OBJ = OBJECTIVES[state.objective] || OBJECTIVES[DEFAULT_OBJECTIVE];
+    // Cache-key stat signature: _simScoreCache keys used to omit the stat VALUES the sim runs on, so
+    // editing Default Stats (or champion stats) and re-running Recommended ranked builds on stale
+    // cached wins. Hash the active tier's class table + champion stats once per build and fold it in.
+    var statsSig = hashStr(JSON.stringify(state.classStats) + "|" + JSON.stringify(state.champions)).toString(36);
     var BREADTH_ON = OBJ.breadth; // spread across barriers + run the diversify pass
     // Soft per-class diversity cap: the breadth (`diversify`) and survivability (`flexRefine`) passes
     // won't pile a single class past this, so one standout (e.g. Acrobat once air is a barrier) can't
@@ -357,7 +361,7 @@
         // sim) so the thousands of search/diversify evals stay fast. (winChance remains the fast
         // fallback engine — `partyOutcome`'s pre-gate and this branch's pre-gate still use the
         // closed-form ATK to skip impossible builds before paying for the sim.)
-        var key = "opt|" + state.quality + "|" + (champ ? champ.name : "") + "|" + saves + "|" + slots.slice().sort().join(",");
+        var key = "opt|" + statsSig + "|" + state.quality + "|" + (champ ? champ.name : "") + "|" + saves + "|" + slots.slice().sort().join(",");
         win = _simScoreCache[key];
         if (win === undefined) {
           var sunits = slots.map(function (cn) {
@@ -402,6 +406,10 @@
     var DIVERSIFY_WIN_EPS = 0.04;
     function slotPref(cn, local) { return [Math.min(local[CLASS[cn].element] || 0, BREADTH_FLOOR), state.classOrder.indexOf(cn), -effClassAtk(cn)]; }
     function prefLess(a, b) { for (var k = 0; k < a.length; k++) { if (a[k] !== b[k]) return a[k] < b[k]; } return false; }
+    // Copies of `cn` already in this party's OTHER slots. counts[] can't see the party being built
+    // (its heroes aren't committed yet / were released), so a per-slot fMax check must add these —
+    // otherwise diversify/flexRefine could hand a party two copies of a class the player capped at 1.
+    function inSlots(arr, cn, skip) { var n = 0; for (var k = 0; k < arr.length; k++) if (k !== skip && arr[k] === cn) n++; return n; }
     function diversify(p, el, slots, tier) {
       var out = slots.slice();
       var curWin = scoreOf(p, el, out).win; // protect the actual win %, not just the tier bucket
@@ -417,7 +425,7 @@
         var curPref = slotPref(out[i], local);
         var pool = (i === 0) ? tanksByAtk : dpsByAtk; // keep exactly one tank (slot 0)
         var cands = pool.filter(function (cn) {
-          return CLASS[cn].element !== "all" && !fExclude(cn) && (counts[cn] || 0) < fMax(cn) && !softCapBlocks(cn, out) && prefLess(slotPref(cn, local), curPref);
+          return CLASS[cn].element !== "all" && !fExclude(cn) && (counts[cn] || 0) + inSlots(out, cn, i) < fMax(cn) && !softCapBlocks(cn, out) && prefLess(slotPref(cn, local), curPref);
         }).sort(function (a, b) { var pa = slotPref(a, local), pb = slotPref(b, local); return prefLess(pa, pb) ? -1 : (prefLess(pb, pa) ? 1 : 0); });
         for (var j2 = 0; j2 < cands.length; j2++) {
           var trial = out.slice(); trial[i] = cands[j2];
@@ -457,7 +465,7 @@
         var bestCn = out[i], bestWin = cur;
         for (var c = 0; c < flexPool.length; c++) {
           var cn = flexPool[c];
-          if (cn === out[i] || fExclude(cn) || (counts[cn] || 0) >= fMax(cn) || softCapBlocks(cn, out)) continue;
+          if (cn === out[i] || fExclude(cn) || (counts[cn] || 0) + inSlots(out, cn, i) >= fMax(cn) || softCapBlocks(cn, out)) continue;
           var trial = out.slice(); trial[i] = cn;
           var w = scoreOf(p, el, trial).win;                 // tier-4 (barrier broken / undermanned) → win 0, auto-rejected
           if (w > bestWin + FLEX_WIN_EPS) { bestWin = w; bestCn = cn; }
@@ -529,6 +537,213 @@
       }
     }
 
+    // ---- Global release-and-rebuild pass (Recommended's "third pass") ----
+    // rebalanceRoster only PERMUTES the classes the greedy build committed (pure swaps), so it can't fix
+    // a party the build gave the wrong CLASSES: it can't introduce a class the build never picked, never
+    // moves a tank, and never re-assigns which barrier a party covers (its tier-4 guard pins every
+    // barrier-carrier — the "joint barrier-assignment problem" its notes call out). This pass closes those
+    // gaps with a large-neighborhood search: RELEASE one party's heroes (their class counts return to the
+    // pool), REBUILD the party from the full catalog at final roster counts (every active barrier × every
+    // tank, then the same diversify/flexRefine polish as the main build), and KEEP the rebuild only when
+    // the global objective improves — maximize the MINIMUM full-party win, tie-broken by the SUM
+    // (lexicographic, same as rebalanceRoster, REFINE_EPS off the sim noise). Guards make an accepted
+    // rebuild strictly non-degrading elsewhere: the element-breadth floor can't drop (component-wise
+    // min(count, BREADTH_FLOOR) per element), required-class minimum deficits can't grow, and the rebuild
+    // must fill exactly the released seats (roster size invariant). When single-party rebuilds plateau and
+    // the floor is still weak (< A), PAIRED rebuilds release TWO parties and rebuild both (weakest first,
+    // so it gets first pick of the freed classes) — that's what lets two parties trade which barrier each
+    // covers, or un-pin a capped class the weak party needs. Iteration-capped (never time-capped) so the
+    // result is deterministic on any machine. Reuses the memoized sim (_simScoreCache), so repeated
+    // re-scores of already-seen compositions are ~free.
+    var REFINE_EPS = 0.02, MAX_REFINE_SWEEPS = 3, PAIR_WEAK_MAX = 3, PAIR_PARTNER_MAX = 8;
+    function globalRefine() {
+      var groups = [], seenPid = {};
+      state.parties.forEach(function (p) {
+        if (seenPid[p.id]) return; // imported JSON can carry duplicate party ids — aliased groups would double-release the same heroes
+        seenPid[p.id] = true;
+        var hs = heroes.filter(function (h) { return h.partyId === p.id; });
+        if (hs.length === partyCap(p)) groups.push({ p: p, hs: hs }); // only full, scorable parties
+      });
+      if (!groups.length) return;
+      function slotsOf(g) { return g.hs.map(function (h) { return h.className; }); }
+      function evalG(g) { return scoreOf(g.p, null, slotsOf(g)); }
+      // Objective values use the RAW win % (hard fails carry win 0 from scoreOf's pre-gate), NOT
+      // rebalanceRoster's tier-4-as-zero convention. That convention is right for pure swaps ("never
+      // break a barrier") but here it made every ≤20%-win party (winTier 4) worth exactly nothing —
+      // so a rebuild lifting the weakest party 0% → 19% looked like 0 → 0 and was rejected, stranding
+      // the bottom of the roster. With raw win, every point at the bottom counts.
+      function objMin(a) { var m = Infinity; for (var k = 0; k < a.length; k++) { if (a[k].win < m) m = a[k].win; } return m; }
+      function objSum(a) { var s = 0; for (var k = 0; k < a.length; k++) s += a[k].win; return s; }
+      // Breadth is PRICED, not gated. A hard "the element-breadth floor may never drop" guard turned out
+      // to pin the weakest party: at Superior the two floor-holding earth heroes both sat in the 3%-win
+      // party, so every rebuild that could fix it was vetoed to protect the floor — a 3%-win party held
+      // hostage by a breadth slot. The build's own philosophy prices breadth at ~DIVERSIFY_WIN_EPS of win
+      // per slot (diversify swaps toward breadth "only when ~free"), so the refine charges the same price
+      // in reverse: LOSING a point of breadth score (Σ per-element min(count, BREADTH_FLOOR)) raises the
+      // required win gain by BREADTH_WORTH. One-sided by design — a breadth GAIN never lowers the bar
+      // (an early draft credited gains symmetrically, and the pass happily accepted breadth-only
+      // reshuffles that improved nobody's win). Floor lifts (the MIN key) dominate unconditionally.
+      var BREADTH_WORTH = BREADTH_ON ? DIVERSIFY_WIN_EPS : 0;
+      function breadthScore() { var s = 0; COVERAGE_ELS.forEach(function (el) { s += Math.min(elemCount[el] || 0, BREADTH_FLOOR); }); return s; }
+      function lexBetter(trial, cur, newBreadth, oldBreadth) {
+        var nMin = objMin(trial), cMin = objMin(cur);
+        if (nMin > cMin + REFINE_EPS) return true;
+        var bar = REFINE_EPS + BREADTH_WORTH * Math.max(0, oldBreadth - newBreadth);
+        return Math.abs(nMin - cMin) <= REFINE_EPS && objSum(trial) > objSum(cur) + bar;
+      }
+      // Hard guard: required-class minimums (Filters) may never get FURTHER from satisfied.
+      function minDeficit() { return allClasses.reduce(function (s, cn) { return s + Math.max(0, fMin(cn) - (counts[cn] || 0)); }, 0); }
+      function releaseParty(g) { // pull g's heroes out of the build + all bookkeeping
+        g.hs.forEach(function (h) {
+          var i = heroes.indexOf(h);
+          if (i < 0) return; // stale ref (defensive) — never decrement tallies for a hero we didn't remove
+          heroes.splice(i, 1);
+          if (counts[h.className]) counts[h.className]--;
+          var e = CLASS[h.className] && CLASS[h.className].element;
+          if (e && elemCount[e]) elemCount[e]--;
+        });
+        g.hs = [];
+      }
+      function commitParty(g, slots) { // add heroes for `slots` + all bookkeeping
+        var hs = [];
+        slots.forEach(function (cn) {
+          if (!mk(cn, g.p.id)) return;
+          hs.push(heroes[heroes.length - 1]);
+          counts[cn] = (counts[cn] || 0) + 1;
+          var e = CLASS[cn] && CLASS[cn].element; if (e) elemCount[e] = (elemCount[e] || 0) + 1;
+        });
+        g.hs = hs;
+      }
+      // Best rebuild for p at CURRENT counts — the main build's selection (all barriers × all tanks) with
+      // the refine's ranking (tier → win → align → ATK → margin; win outranks align here because this pass
+      // exists purely to lift win), then the same diversify/flexRefine polish the main build applies.
+      function rebuildBest(p) {
+        var best = null;
+        barrierChoices.forEach(function (el) {
+          tanksByAtk.forEach(function (tankCn) {
+            var slots = buildFor(p, el, tankCn);
+            var s2 = scoreOf(p, el, slots);
+            var better;
+            if (!best) better = true;
+            else if (s2.tier !== best.sc.tier) better = s2.tier < best.sc.tier;
+            else if (Math.abs(s2.win - best.sc.win) > SELECT_WIN_EPS) better = s2.win > best.sc.win;
+            else if (s2.align !== best.sc.align) better = s2.align > best.sc.align;
+            else if (s2.atk !== best.sc.atk) better = s2.atk > best.sc.atk;
+            else better = s2.bar > best.sc.bar;
+            if (better) best = { slots: slots, sc: s2, el: el };
+          });
+        });
+        if (!best) return null;
+        var chosen = BREADTH_ON ? diversify(p, best.el, best.slots, best.sc.tier) : best.slots.slice();
+        return flexRefine(p, best.el, chosen);
+      }
+      var sc = groups.map(evalG);
+      // Debug seam: set window.__lnsDebug = true before clicking Recommended and every refine decision
+      // (initial scores, each rebuild's before → after and accept/reject) lands in window.__lnsLog.
+      var DBG = typeof window !== "undefined" && window.__lnsDebug;
+      function dbg(m) { if (DBG) (window.__lnsLog = window.__lnsLog || []).push(m); }
+      dbg("init: " + groups.map(function (g, i) { return g.p.name + "=" + Math.round(sc[i].win * 100); }).join(" "));
+      if (objMin(sc) >= WIN_BANDS.S) return; // weakest full party already S — same early-out as rebalance
+      // Rebuild ONE party in place; keep only a guarded global improvement. Returns true if kept.
+      function trySingle(gi) {
+        var g = groups[gi], oldSlots = slotsOf(g);
+        var bBefore = breadthScore(), dBefore = minDeficit();
+        releaseParty(g);
+        var slots = rebuildBest(g.p);
+        if (!slots || slots.length !== oldSlots.length) { commitParty(g, oldSlots); return false; } // filters left it short — restore
+        commitParty(g, slots);
+        var ns = evalG(g);
+        var trial = sc.slice(); trial[gi] = ns;
+        var acc = lexBetter(trial, sc, breadthScore(), bBefore) && minDeficit() <= dBefore &&
+          !(ns.win === 0 && sc[gi].win > 0); // never rebuild a working party into a dead one
+        dbg("single " + g.p.name + ": " + oldSlots.join("/") + "(" + Math.round(sc[gi].win * 100) + ") -> " + slots.join("/") + "(" + Math.round(ns.win * 100) + ") " + (acc ? "ACCEPT" : "reject"));
+        if (acc) { sc[gi] = ns; return true; }
+        releaseParty(g); commitParty(g, oldSlots); // not better — exact restore
+        return false;
+      }
+      // Evaluate one paired rebuild (weakest first, so it gets first pick of the freed classes):
+      // construct → score → ALWAYS revert. Returns null when the pair can't be built or fails the
+      // acceptance gates; else its objective gain, so the caller can pick the STEEPEST trade rather
+      // than settle for the first acceptable one (first-improvement once traded the roster's best
+      // party down 43 points to rescue a weak one when a far better partner existed).
+      function evalPair(wi, pi) {
+        var W = groups[wi], P = groups[pi];
+        var wOld = slotsOf(W), pOld = slotsOf(P);
+        var bBefore = breadthScore(), dBefore = minDeficit();
+        releaseParty(W); releaseParty(P);
+        var ok = false, ws = rebuildBest(W.p);
+        if (ws && ws.length === wOld.length) {
+          commitParty(W, ws);
+          var ps = rebuildBest(P.p);
+          if (ps && ps.length === pOld.length) { commitParty(P, ps); ok = true; }
+          else releaseParty(W);
+        }
+        if (!ok) { commitParty(W, wOld); commitParty(P, pOld); return null; }
+        var nw = evalG(W), np = evalG(P);
+        var trial = sc.slice(); trial[wi] = nw; trial[pi] = np;
+        var nB = breadthScore();
+        var acc = lexBetter(trial, sc, nB, bBefore) && minDeficit() <= dBefore &&
+          !(nw.win === 0 && sc[wi].win > 0) && !(np.win === 0 && sc[pi].win > 0); // no new dead party
+        dbg("pair " + W.p.name + "+" + P.p.name + ": (" + Math.round(sc[wi].win * 100) + "," + Math.round(sc[pi].win * 100) + ") -> (" + Math.round(nw.win * 100) + "," + Math.round(np.win * 100) + ") " + (acc ? "ok" : "reject"));
+        releaseParty(W); releaseParty(P); commitParty(W, wOld); commitParty(P, pOld); // evaluation only
+        if (!acc) return null;
+        var minGain = objMin(trial) - objMin(sc);
+        var sumGain = objSum(trial) - objSum(sc) - BREADTH_WORTH * Math.max(0, bBefore - nB);
+        return { gain: minGain * 1000 + sumGain, wi: wi, pi: pi }; // steepest: lifting the floor dominates
+      }
+      // Re-run the winning pair and keep it. rebuildBest is deterministic given identical counts, and the
+      // pre-revert state was identical, so this reproduces exactly what evalPair scored (all sim-cached).
+      // The length guards mirror evalPair's — they can't fire if the invariant holds, but a silent
+      // mis-commit here would corrupt the roster, so restore rather than trust distant reasoning.
+      function applyPair(wi, pi) {
+        var W = groups[wi], P = groups[pi];
+        var wOld = slotsOf(W), pOld = slotsOf(P);
+        releaseParty(W); releaseParty(P);
+        var ws = rebuildBest(W.p);
+        if (!ws || ws.length !== wOld.length) { commitParty(W, wOld); commitParty(P, pOld); return; }
+        commitParty(W, ws);
+        var ps = rebuildBest(P.p);
+        if (!ps || ps.length !== pOld.length) { releaseParty(W); commitParty(W, wOld); commitParty(P, pOld); return; }
+        commitParty(P, ps);
+        sc[wi] = evalG(W); sc[pi] = evalG(P);
+        dbg("apply pair " + W.p.name + "+" + P.p.name + " -> (" + Math.round(sc[wi].win * 100) + "," + Math.round(sc[pi].win * 100) + ")");
+      }
+      function weakestOrder() {
+        return sc.map(function (s, i) { return i; }).sort(function (a, b) { return sc[a].win - sc[b].win; });
+      }
+      // Alternate single-party sweeps with steepest pair rounds (≤ REFINE_CYCLES): a pair trade
+      // reshuffles classes, which opens new single rebuilds, which can open new trades — a single
+      // pairs-then-polish pass measurably left the floor short of its ceiling (Superior floor 14%
+      // vs 27% purely by which local optimum the one-shot sequence happened to land in). Bounded
+      // (cycles × sweeps × pair budget are all constants) and deterministic.
+      var REFINE_CYCLES = 2;
+      for (var cycle = 0; cycle < REFINE_CYCLES; cycle++) {
+        // Single-party rebuilds, weakest first, until a sweep finds nothing (≤ MAX_REFINE_SWEEPS).
+        for (var sweep = 0; sweep < MAX_REFINE_SWEEPS; sweep++) {
+          var improved = false;
+          var order = weakestOrder();
+          for (var oi = 0; oi < order.length; oi++) if (trySingle(order[oi])) improved = true;
+          if (!improved) break;
+        }
+        if (objMin(sc) >= WIN_BANDS.A) break; // floor healthy — pairs have nothing to lift
+        // Paired rebuilds: for each of the ≤3 weakest parties, evaluate a trade with each of ≤8
+        // partners (strongest first — they hold the classes worth trading), apply only the STEEPEST.
+        var order2 = weakestOrder();
+        var weak = order2.filter(function (i) { return sc[i].win < WIN_BANDS.A; }).slice(0, PAIR_WEAK_MAX);
+        var pairImproved = false;
+        for (var w = 0; w < weak.length; w++) {
+          var partners = order2.slice().reverse().filter(function (i) { return i !== weak[w]; }).slice(0, PAIR_PARTNER_MAX);
+          var bestPair = null;
+          for (var q = 0; q < partners.length; q++) {
+            var r = evalPair(weak[w], partners[q]);
+            if (r && (!bestPair || r.gain > bestPair.gain)) bestPair = r;
+          }
+          if (bestPair) { applyPair(bestPair.wi, bestPair.pi); pairImproved = true; }
+        }
+        if (!pairImproved) break; // no trade found — another cycle would just repeat the search
+      }
+    }
+
     // No active barriers → still try once (el=null) so parties get built (pure DPS/survival, no barrier req).
     var barrierChoices = state.barriers.length ? state.barriers : [null];
     // Within a tier, the sim `win` is a better "stronger party" signal than raw ATK (it sees survival +
@@ -536,7 +751,46 @@
     // ≥95% build to a tie and the choice falls to ATK — the "lots of 99–100%, but not the best" effect.
     // EPS keeps it off the ~±2.6% sim noise.
     var SELECT_WIN_EPS = 0.02;
-    state.parties.forEach(function (p) {
+    // When the roster cap can't seat every party (maxRoster < total seats), the LAST parties built eat
+    // the shortage — and building in array order made that party arbitrary: the default 11-champion ×
+    // 3-seat layout needs 33 seats against a 32 cap, and the array order silently left BJORN's party
+    // (the strongest aura set: +30% ATK, +20% HP, +0.5 crit dmg) undermanned purely by list position.
+    // So when a shortage exists, build order = each party's best ISOLATED build (scored on an empty
+    // roster so every champion is judged on equal footing), strongest first — the shortage lands on the
+    // LEAST valuable party. Rank: win% (SELECT_WIN_EPS-collapsed, since it saturates at strong gear),
+    // then party effective ATK (which folds the champion's ATK/crit/crit-dmg auras — the differentiator
+    // when everyone survives), then array order (stable sort). No shortage → array order, as before.
+    var seatTotal = state.parties.reduce(function (s, p) { return s + partyCap(p); }, 0);
+    var buildOrder = state.parties;
+    if (seatTotal > state.maxRoster) {
+      var iso = {};
+      state.parties.forEach(function (p) {
+        // Collect every (el × tank) isolated build, then reduce order-independently: best win, and the
+        // best ATK among the near-best-win builds (so the ATK tiebreak describes a build the party
+        // would actually use, not a high-ATK build with a much worse win).
+        var builds = [];
+        barrierChoices.forEach(function (el) {
+          tanksByAtk.forEach(function (tankCn) {
+            var s2 = scoreOf(p, el, buildFor(p, el, tankCn));
+            builds.push({ win: s2.win, atk: s2.atk }); // hard fails carry win 0 from scoreOf
+          });
+        });
+        var bw = 0, ba = 0;
+        builds.forEach(function (b) { if (b.win > bw) bw = b.win; });
+        builds.forEach(function (b) { if (b.win >= bw - SELECT_WIN_EPS && b.atk > ba) ba = b.atk; });
+        // The sort key must be TRANSITIVE. A raw "eps-tie then ATK" comparator is not (A~B on atk,
+        // B~C on atk, but A vs C clears the eps → a cycle), and JS sort with an inconsistent
+        // comparator is implementation-defined — the shortage victim would be arbitrary again, in
+        // exactly the saturated-gear case this pre-pass exists for. So: quantize win into fixed
+        // EPS-wide bands, then ATK inside a band. Stable sort keeps array order on full ties.
+        iso[p.id] = { band: Math.round(bw / SELECT_WIN_EPS), atk: ba };
+      });
+      buildOrder = state.parties.slice().sort(function (a, b) {
+        var d = iso[b.id].band - iso[a.id].band;
+        return d !== 0 ? d : iso[b.id].atk - iso[a.id].atk;
+      });
+    }
+    buildOrder.forEach(function (p) {
       if (heroes.length >= state.maxRoster) return;
       var best = null;
       barrierChoices.forEach(function (el) {
@@ -568,6 +822,8 @@
       }
     });
     rebalanceRoster(); // second pass: redistribute strength across parties (lift the weakest), barrier-safe
+    globalRefine();    // third pass: release-and-rebuild — new classes / tank changes / barrier re-assignment
+    rebalanceRoster(); // final polish: pure swaps on the refined roster (cheap — memoized sim + early-out)
     state.heroes = heroes;
   }
   // Class-average effective ATK (crit-boosted) — the figure the build optimizes on.
@@ -1091,7 +1347,20 @@
           "<p class=\"mt-2\"><b>This replaces ALL current heroes.</b></p>" +
           "<p class=\"mt-2 text-textSecondary\">Want it tailored? Set class <b>excludes, caps, or minimums</b> in the <b>Filters</b> tab first — Recommended honors them.</p>",
         confirmLabel: "Build Roster",
-        onConfirm: function () { buildSuggestedRoster(); setUpdate("Recommended — built the ideal roster (" + state.heroes.length + " heroes)."); render(); }
+        onConfirm: function () {
+          buildSuggestedRoster();
+          // Roster cap < total party seats → one party is inevitably left short (graded D). The build
+          // now parks the shortage on the LEAST valuable party — tell the player how to fill every seat.
+          var seats = state.parties.reduce(function (s, p) { return s + partyCap(p); }, 0);
+          var capNote = "";
+          if (seats > state.maxRoster) {
+            capNote = seats <= MAX_ROSTER_CAP
+              ? " Note: " + state.parties.length + " parties need " + seats + " heroes but Max Roster is " + state.maxRoster + " — the least-valuable party was left short (raise Max Roster to " + seats + " to fill every party)."
+              : " Note: " + state.parties.length + " parties need " + seats + " heroes but the roster tops out at " + MAX_ROSTER_CAP + " — even at max capacity some parties stay short (remove a party to fill the rest).";
+          }
+          setUpdate("Recommended — built the ideal roster (" + state.heroes.length + " heroes)." + capNote);
+          render();
+        }
       });
     }
   });
