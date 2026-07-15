@@ -180,7 +180,7 @@ window.T16_ROSTER_JSON = `
       "Bishop": {"hp": 2847, "atk": 106472, "def": 18563, "eva": 0, "power": 245, "crit": 20, "threat": 10, "critDmg": 2},
       "Arch Druid": {"hp": 1953, "atk": 159845, "def": 9073, "eva": 0, "power": 220, "crit": 23, "threat": 5, "critDmg": 2},
       "Warlock": {"hp": 2162, "atk": 193428, "def": 10415, "eva": 0, "power": 230, "crit": 20, "threat": 10, "critDmg": 2},
-      "Spellknight": {"hp": 2977, "atk": 92851, "def": 20796, "eva": 0, "power": 255, "crit": 20, "threat": 10, "critDmg": 2},
+      "Spellknight": {"hp": 1605, "atk": 87571, "def": 21710, "eva": 64, "power": 255, "crit": 20, "threat": 10, "critDmg": 4},
       "Astramancer": {"hp": 4339, "atk": 146847, "def": 12516, "eva": 0, "power": 240, "crit": 20, "threat": 10, "critDmg": 2},
       "Fateweaver": {"hp": 2651, "atk": 66282, "def": 18266, "eva": 10, "power": 215, "crit": 20, "threat": 10, "critDmg": 2}
     },
